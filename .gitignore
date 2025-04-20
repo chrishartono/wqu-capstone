@@ -176,3 +176,4 @@ cython_debug/
 # Other
 data_local/
 .idea/
+*.csv
