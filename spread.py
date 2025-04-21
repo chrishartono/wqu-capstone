@@ -1,7 +1,7 @@
 import pandas as pd
 import statsmodels.api as sm
 
-def BuildSpread(prices_df: pd.DataFrame, combination: tuple[str, str]) -> tuple[pd.DataFrame, float, tuple[str, str]]:
+def BuildSpread(prices_df: pd.DataFrame, combination: tuple[str, str]) -> tuple[pd.DataFrame, float]:
 	"""
 	This function creates spread dataframe with OLS for train set.
 
@@ -19,9 +19,9 @@ def BuildSpread(prices_df: pd.DataFrame, combination: tuple[str, str]) -> tuple[
 
 	spread = pd.DataFrame(Y - X * coef, columns=['spread'], index=prices_df.index)
 
-	return spread, coef, combination
+	return spread, coef
 
-def UpdateSpread(prices_df: pd.DataFrame, combination: tuple[str, str], coef: float) -> tuple[pd.DataFrame, tuple[str, str]]:
+def UpdateSpread(prices_df: pd.DataFrame, combination: tuple[str, str], coef: float) -> tuple[pd.DataFrame]:
 	"""
 	This function creates spread dataframe with coefficient given as parameter.
 
@@ -35,4 +35,4 @@ def UpdateSpread(prices_df: pd.DataFrame, combination: tuple[str, str], coef: fl
 	X = prices_df[combination[1]]
 	spread = pd.DataFrame(Y - X * coef, columns=['spread'], index=prices_df.index)
 
-	return spread, combination
+	return spread
