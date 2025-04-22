@@ -177,3 +177,4 @@ cython_debug/
 data_local/
 .idea/
 *.csv
+*.zip
