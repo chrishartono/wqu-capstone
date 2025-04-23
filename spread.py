@@ -21,7 +21,7 @@ def BuildSpread(prices_df: pd.DataFrame, combination: tuple[str, str]) -> tuple[
 
 	return spread, coef
 
-def UpdateSpread(prices_df: pd.DataFrame, combination: tuple[str, str], coef: float) -> tuple[pd.DataFrame]:
+def UpdateSpread(prices_df: pd.DataFrame, combination: tuple[str, str], coef: float) -> pd.DataFrame:
 	"""
 	This function creates spread dataframe with coefficient given as parameter.
 

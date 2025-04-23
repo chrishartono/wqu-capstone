@@ -4,7 +4,9 @@ import pandas as pd
 
 from combinations import SearchForGoodCombinations
 from comovement import ComovementType
+from feature_engineering import AddFeatures
 from spread import BuildSpread, UpdateSpread
+from top_model import rolling_window
 
 
 class Backtester:
@@ -18,6 +20,7 @@ class Backtester:
 				 use_parallelization: bool):
 
 		self.__prices_df = prices_df
+		self.__train_window_days = train_window_days
 		self.__all_possible_combinations = all_possible_combinations
 		self.__comovement_type = comovement_detection_type
 		self.__date_bounds = self.__make_date_bounds(prices_df, train_window_days, trade_window_days)
@@ -59,6 +62,11 @@ class Backtester:
 		train_spread, coef = BuildSpread(train, combination)
 		test_spread = UpdateSpread(test, combination, coef)
 
+		train = pd.concat([train, train_spread])
+		test = pd.concat([test, test_spread])
+
+		rolling_window_days = int(self.__train_window_days / 2)
+		train, test = AddFeatures(train, test, combination, rolling_window_days)
 		# TODO: Build targets, train top and bottom models, predict, trade
 
 	def Run(self):

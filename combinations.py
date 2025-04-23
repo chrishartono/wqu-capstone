@@ -12,7 +12,8 @@ def CreateAllPossibleCombinations(prices_df: pd.DataFrame):
 
 	pair_combinations = []
 	combs_set = set()
-	for c0, c1 in combinations(prices_df.columns, r=2):
+	close_columns = [col for col in prices_df.columns if 'close' in col]
+	for c0, c1 in combinations(close_columns, r=2):
 		if (c0, c1) in combs_set: continue
 
 		combs_set.add((c0, c1))
