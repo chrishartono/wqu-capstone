@@ -4,16 +4,6 @@ import numpy as np
 import pandas as pd
 from hurst import compute_Hc
 
-# def calculate_hurst_exponent(time_series: pd.Series):
-# 	""" Calculate the Hurst Exponent of a time series. """
-# 	L = len(time_series)
-# 	mean_ts = np.mean(time_series)
-# 	cum_dev = np.cumsum(time_series - mean_ts)
-# 	R = np.max(cum_dev) - np.min(cum_dev)
-# 	S = np.std(time_series)
-# 	H = np.log(R / S) / np.log(L)
-# 	return H
-
 def add_basic_features(df: pd.DataFrame, combination: tuple[str, str]):
 	columns_for_returns = ['close', 'volume', 'close-open', 'high-low']
 
@@ -27,7 +17,9 @@ def add_basic_features(df: pd.DataFrame, combination: tuple[str, str]):
 			df[f'{col_ret}_{pair}_returns'] = df[f'{col_ret}_{pair}'].pct_change().fillna(0)
 
 	# Can't use pct_change here because spread may have negative values
-	df['spread_returns'] = (df['spread'] - df['spread'].shift(1)) / abs(df['spread'].shift(1)).fillna(0)
+	df['spread_returns'] = (df['spread'] - df['spread'].shift(1)) / abs(df['spread'].shift(1))
+	df.replace([np.inf, -np.inf], np.nan, inplace=True)
+	df.fillna(0, inplace=True)
 
 	return df
 
@@ -41,7 +33,7 @@ def add_zscores(train: pd.DataFrame, test: pd.DataFrame):
 	return train, test
 
 def add_rolling_hurst(train: pd.DataFrame, test: pd.DataFrame, rolling_window_days: int):
-	hurst_columns = ['close', 'spread']
+	hurst_columns = ['spread']
 
 	df = pd.concat([train, test], axis=0)
 	rolling_delta = timedelta(days=rolling_window_days)
@@ -50,7 +42,7 @@ def add_rolling_hurst(train: pd.DataFrame, test: pd.DataFrame, rolling_window_da
 
 	rolling_window_periods = len(df_slice)
 	for col in hurst_columns:
-		df[f'{col}_hurst'] = df.rolling(rolling_window_periods).apply(compute_Hc, raw=True, kwargs={'kind':'price', 'simplified':False})
+		df[f'{col}_hurst'] = df[col].rolling(window=rolling_window_periods).apply(lambda x: compute_Hc(x, kind='price', simplified=True)[0], raw=True)
 
 	train_len = len(train)
 	train = df.iloc[:train_len]
@@ -70,7 +62,7 @@ def AddFeatures(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str,
 	test = add_basic_features(test, combination)
 
 	train, test = add_zscores(train, test)
-	train, test = add_rolling_hurst(train, test, rolling_window_days)
+	# train, test = add_rolling_hurst(train, test, rolling_window_days)
 
 	train = clean(train)
 	test = clean(test)

@@ -5,7 +5,7 @@ import pandas as pd
 from combinations import SearchForGoodCombinations
 from comovement import ComovementType
 from feature_engineering import AddFeatures
-from spread import BuildSpread, UpdateSpread
+from spread import AddTrainSpread, UpdateSpread
 from top_model import rolling_window
 
 
@@ -59,7 +59,7 @@ class Backtester:
 		return date_bounds
 
 	def __process_single_combination(self, train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str]) -> tuple:
-		train_spread, coef = BuildSpread(train, combination)
+		train_spread, coef = AddTrainSpread(train, combination)
 		test_spread = UpdateSpread(test, combination, coef)
 
 		train = pd.concat([train, train_spread])
