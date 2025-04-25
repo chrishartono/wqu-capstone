@@ -3,6 +3,7 @@ from datetime import datetime
 
 import pandas as pd
 
+from comovement import test_cointegration
 from feature_engineering import AddFeatures
 from spread import AddSpread
 from target_creation import AddPeakNeighboursSingleColumn
@@ -25,6 +26,8 @@ if __name__ == '__main__':
 
 	prices_df = pd.read_csv('binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 
+	# test_cointegration(prices_df[list(combination)], combination)
+
 	pairs = set([c.split('_')[1] for c in combination])
 	columns_to_choose = [col for col in prices_df.columns if col != 'date' and col.split('_')[1] in pairs]
 
@@ -40,9 +43,8 @@ if __name__ == '__main__':
 	test, _ = AddSpread(test, combination, coefs)
 
 	train_days = (train.index[-1] - train.index[0]).days
-	window_days = int(train_days / 2)
-	train, test = AddFeatures(train, test, combination, window_days
-							  )
+	window_days = 10
+	train, test = AddFeatures(train, test, combination, window_days)
 	feats_df = pd.concat([train, test], axis=0)
 	window_rows = int(len(train) / 20)
 	feats_df = AddPeakNeighboursSingleColumn(feats_df, target_col='spread', period=window_rows, resulting_target_column='TARGET', numNeighbours=10)

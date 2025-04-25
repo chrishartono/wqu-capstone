@@ -42,7 +42,9 @@ def add_rolling_hurst(train: pd.DataFrame, test: pd.DataFrame, rolling_window_da
 
 	rolling_window_periods = len(df_slice)
 	for col in hurst_columns:
-		df[f'{col}_hurst'] = df[col].rolling(window=rolling_window_periods).apply(lambda x: compute_Hc(x, kind='price', simplified=True)[0], raw=True)
+		df[f'{col}_shifted'] = df[col] + abs(df[col].min()) + 1
+		df[f'{col}_hurst'] = df[f'{col}_shifted'].rolling(window=rolling_window_periods).apply(lambda x: compute_Hc(x, kind='price', simplified=True)[0],
+																							   raw=True)
 
 	train_len = len(train)
 	train = df.iloc[:train_len]
@@ -62,7 +64,7 @@ def AddFeatures(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str,
 	test = add_basic_features(test, combination)
 
 	train, test = add_zscores(train, test)
-	# train, test = add_rolling_hurst(train, test, rolling_window_days)
+	train, test = add_rolling_hurst(train, test, rolling_window_days)
 
 	train = clean(train)
 	test = clean(test)

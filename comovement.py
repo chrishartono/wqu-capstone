@@ -20,6 +20,9 @@ def test_cointegration(prices_df: pd.DataFrame, combination: tuple[str, str], si
 	:param significance_level: Significance level against which we check our p_value.
 	:return: Tuple of Boolean flag indicating cointegration and combination tuple (for using with parallelization).
 	"""
+	result = phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Zt")
+	v = result.cointegrating_vector
+	spread = prices_df[combination[0]]*v[combination[0]] + prices_df[combination[1]]*v[combination[1]]
 
 	po_pvalues = [phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Zt").pvalue,
 				  phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Za").pvalue,
