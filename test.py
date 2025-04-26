@@ -45,6 +45,6 @@ if __name__ == '__main__':
 	train_days = (train.index[-1] - train.index[0]).days
 	window_days = 10
 	train, test = AddFeatures(train, test, combination, window_days)
-	feats_df = pd.concat([train, test], axis=0)
-	window_rows = int(len(train) / 20)
-	feats_df = AddPeakNeighboursSingleColumn(feats_df, target_col='spread', period=window_rows, resulting_target_column='TARGET', numNeighbours=10)
+	# feats_df = pd.concat([train, test], axis=0)
+	# window_rows = int(len(train) / 20)
+	# feats_df = AddPeakNeighboursSingleColumn(feats_df, target_col='spread', period=window_rows, resulting_target_column='TARGET', numNeighbours=10)
