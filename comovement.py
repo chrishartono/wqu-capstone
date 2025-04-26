@@ -1,8 +1,10 @@
 import logging
 from enum import IntEnum
+from unittest import result
 
 import numpy as np
 import pandas as pd
+from arch.unitroot._phillips_ouliaris import PhillipsOuliarisTestResults
 from arch.unitroot.cointegration import phillips_ouliaris
 from statsmodels.tsa.stattools import grangercausalitytests
 
@@ -11,7 +13,8 @@ class ComovementType(IntEnum):
 	COINTEGRATION = 0
 	GRANGER_CAUSALITY = 1
 
-def test_cointegration(prices_df: pd.DataFrame, combination: tuple[str, str], significance_level=0.05) -> tuple[bool, tuple[str, str]]:
+def test_cointegration(prices_df: pd.DataFrame, combination: tuple[str, str], significance_level=0.05) -> \
+		tuple[bool, tuple[str, str], PhillipsOuliarisTestResults]:
 	"""
 	This function checks for cointegration between 2 time series with Phillips-Ouliaris Zt and Za tests
 
@@ -21,21 +24,22 @@ def test_cointegration(prices_df: pd.DataFrame, combination: tuple[str, str], si
 	:return: Tuple of Boolean flag indicating cointegration and combination tuple (for using with parallelization).
 	"""
 	result = phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Zt")
-	v = result.cointegrating_vector
-	spread = prices_df[combination[0]]*v[combination[0]] + prices_df[combination[1]]*v[combination[1]]
+	coint_vector = result.cointegrating_vector
 
-	po_pvalues = [phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Zt").pvalue,
-				  phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Za").pvalue,
-				  phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Pu").pvalue,
-				  phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Pz").pvalue]
-	cointegrated = np.all([pvalue < significance_level for pvalue in po_pvalues])
+	# po_pvalues = [phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Zt").pvalue,
+	# 			  phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Za").pvalue,
+	# 			  phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Pu").pvalue,
+	# 			  phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Pz").pvalue]
+	# cointegrated = np.all([pvalue < significance_level for pvalue in po_pvalues])
+	cointegrated = result.pvalue < significance_level
 	if not cointegrated:
-		logging.info(f'{combination} is not cointegrated. po_pvalues: {po_pvalues}')
-		return False, combination
+		logging.info(f'{combination} is not cointegrated. pvalue: {result.pvalue}')
+		return False, combination, coint_vector
 
-	return True, combination
+	return True, combination, coint_vector
 
-def test_granger_causality(prices_df: pd.DataFrame, combination: tuple[str, str], significance_level=0.05) -> tuple[bool, tuple[str, str]]:
+def test_granger_causality(prices_df: pd.DataFrame, combination: tuple[str, str], significance_level=0.05) -> \
+		tuple[bool, tuple[str, str], PhillipsOuliarisTestResults]:
 	"""
 	This function checks if time series 1 first differences are Granger Caused by time series 2 first differences.
 
@@ -45,6 +49,11 @@ def test_granger_causality(prices_df: pd.DataFrame, combination: tuple[str, str]
 	:return: Tuple of Boolean flag indicating Granger Causality and combination tuple (for using with parallelization).
 	"""
 
+	cointegrated, _, coint_vector = test_cointegration(prices_df, combination, significance_level)
+	if not cointegrated:
+		logging.info(f'Will not test Granger causality further for {combination} because not cointegrated.')
+		return False, combination, coint_vector
+
 	diffs = prices_df.diff(1).dropna()
 	gc_res = grangercausalitytests(diffs, maxlag=10)
 
@@ -53,12 +62,12 @@ def test_granger_causality(prices_df: pd.DataFrame, combination: tuple[str, str]
 
 	if not granger_caused:
 		logging.info(f'{combination[1]} does NOT cause {combination[0]}. gc_pvalues for lags: {gc_pvalues}')
-		return False, combination
+		return False, combination, coint_vector
 
-	return True, combination
+	return True, combination, coint_vector
 
-def TestCombinationComovement(prices_df: pd.DataFrame, combination: tuple[str, str], comovement_type: ComovementType, significance_level=0.05) \
-		-> tuple[bool, tuple[str, str]]:
+def TestCombinationComovement(prices_df: pd.DataFrame, combination: tuple[str, str], comovement_type: ComovementType, significance_level=0.05) -> \
+		tuple[bool, tuple[str, str], PhillipsOuliarisTestResults]:
 	"""
 	This function checks if time series 1 first differences are Granger Caused by time series 2 first differences.
 

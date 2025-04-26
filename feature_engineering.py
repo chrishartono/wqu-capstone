@@ -23,34 +23,22 @@ def add_basic_features(df: pd.DataFrame, combination: tuple[str, str]):
 
 	return df
 
-def add_zscores(train: pd.DataFrame, test: pd.DataFrame):
-	for col in train.columns:
-		mean = train[col].mean()
-		std = train[col].std()
-		train[f'{col}_zscore'] = (train[col] - mean) / std
-		test[f'{col}_zscore'] = (test[col] - mean) / std
+def add_zscores(data: pd.DataFrame, window_periods: int):
+	for col in data.columns:
+		mean = data[col].rolling(window=window_periods).mean()
+		std = data[col].rolling(window=window_periods).std()
+		data[f'{col}_zscore'] = (data[col] - mean) / std
 
-	return train, test
+	return data
 
-def add_rolling_hurst(train: pd.DataFrame, test: pd.DataFrame, rolling_window_days: int):
+def add_rolling_hurst(data: pd.DataFrame, window_periods: int):
 	hurst_columns = ['spread']
 
-	df = pd.concat([train, test], axis=0)
-	rolling_delta = timedelta(days=rolling_window_days)
-	rolling_window_end_date = df.index[0] + rolling_delta
-	df_slice = df[df.index <= rolling_window_end_date]
-
-	rolling_window_periods = len(df_slice)
 	for col in hurst_columns:
-		df[f'{col}_shifted'] = df[col] + abs(df[col].min()) + 1
-		df[f'{col}_hurst'] = df[f'{col}_shifted'].rolling(window=rolling_window_periods).apply(lambda x: compute_Hc(x, kind='price', simplified=True)[0],
-																							   raw=True)
+		data[f'{col}_shifted'] = data[col] + abs(data[col].min()) + 1
+		data[f'{col}_hurst'] = data[f'{col}_shifted'].rolling(window=window_periods).apply(lambda x: compute_Hc(x, kind='price', simplified=True)[0], raw=True)
 
-	train_len = len(train)
-	train = df.iloc[:train_len]
-	test = df.iloc[train_len:]
-
-	return train, test
+	return data
 
 def clean(df: pd.DataFrame):
 	df.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -59,14 +47,21 @@ def clean(df: pd.DataFrame):
 
 	return df
 
-def AddFeatures(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], rolling_window_days: int):
-	train = add_basic_features(train, combination)
-	test = add_basic_features(test, combination)
+def AddFeatures(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], rolling_window_days: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+	data = pd.concat([train, test], axis=0)
 
-	train, test = add_zscores(train, test)
-	train, test = add_rolling_hurst(train, test, rolling_window_days)
+	rolling_delta = timedelta(days=rolling_window_days)
+	rolling_window_end_date = data.index[0] + rolling_delta
+	df_slice = data[data.index <= rolling_window_end_date]
 
-	train = clean(train)
-	test = clean(test)
+	window_periods = len(df_slice)
+
+	data = add_basic_features(data, combination)
+	data = add_zscores(data, window_periods)
+	data = add_rolling_hurst(data, window_periods)
+
+	data = clean(data)
+	train = data.iloc[:len(train)]
+	test = data.iloc[len(train):]
 
 	return train, test

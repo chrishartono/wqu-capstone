@@ -33,7 +33,7 @@ def SearchForGoodCombinations(prices_df: pd.DataFrame, all_possible_combinations
 	results = (Parallel(n_jobs=n_jobs, prefer="processes")
 						(delayed(TestCombinationComovement)(p) for p in tqdm(params, total=len(params), desc="Combinations search:")))
 
-	good_combinations = [comb for isGood, comb in results if isGood]
+	good_combinations = [(comb, coint_vector) for isGood, comb, coint_vector in results if isGood]
 
 	logging.info(f'Finally got {len(good_combinations)} good combinations for prices slice from {prices_df.index[0]} to {prices_df.index[-1]}')
 

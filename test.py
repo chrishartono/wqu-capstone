@@ -5,7 +5,7 @@ import pandas as pd
 
 from comovement import test_cointegration
 from feature_engineering import AddFeatures
-from spread import AddSpread
+from spread import AddPolyfitSpread
 from target_creation import AddPeakNeighboursSingleColumn
 
 
@@ -39,8 +39,8 @@ if __name__ == '__main__':
 	train = prices_df.iloc[:train_split_idx]
 	test = prices_df.iloc[train_split_idx:]
 
-	train, coefs = AddSpread(train, combination, coefs=None)
-	test, _ = AddSpread(test, combination, coefs)
+	train, coefs = AddPolyfitSpread(train, combination, coefs=None)
+	test, _ = AddPolyfitSpread(test, combination, coefs)
 
 	train_days = (train.index[-1] - train.index[0]).days
 	window_days = 10

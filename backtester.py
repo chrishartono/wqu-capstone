@@ -1,11 +1,12 @@
 from datetime import timedelta
 
 import pandas as pd
+from arch.unitroot._phillips_ouliaris import PhillipsOuliarisTestResults
 
 from combinations import SearchForGoodCombinations
 from comovement import ComovementType
 from feature_engineering import AddFeatures
-from spread import AddTrainSpread, UpdateSpread
+from spread import AddCointCoefSpread
 from top_model import rolling_window
 
 
@@ -15,12 +16,14 @@ class Backtester:
 				 prices_df: pd.DataFrame,
 				 train_window_days: int,
 				 trade_window_days: int,
+				 rolling_window_days: int,
 				 all_possible_combinations: list[tuple[str, str]],
 				 comovement_detection_type: ComovementType,
 				 use_parallelization: bool):
 
 		self.__prices_df = prices_df
 		self.__train_window_days = train_window_days
+		self.__rolling_window_days = rolling_window_days
 		self.__all_possible_combinations = all_possible_combinations
 		self.__comovement_type = comovement_detection_type
 		self.__date_bounds = self.__make_date_bounds(prices_df, train_window_days, trade_window_days)
@@ -58,15 +61,12 @@ class Backtester:
 
 		return date_bounds
 
-	def __process_single_combination(self, train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str]) -> tuple:
-		train_spread, coef = AddTrainSpread(train, combination)
-		test_spread = UpdateSpread(test, combination, coef)
+	def __prepare_combination_data(self, train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], coint_vector: PhillipsOuliarisTestResults):
+		train = AddCointCoefSpread(train, combination, coint_vector)
+		test = AddCointCoefSpread(test, combination, coint_vector)
 
-		train = pd.concat([train, train_spread])
-		test = pd.concat([test, test_spread])
-
-		rolling_window_days = int(self.__train_window_days / 2)
-		train, test = AddFeatures(train, test, combination, rolling_window_days)
+		train, test = AddFeatures(train, test, combination, self.__rolling_window_days)
+		feats_df = AddPeakNeighboursSingleColumn(feats_df, target_col='spread', period=window_rows, resulting_target_column='TARGET', numNeighbours=10)
 		# TODO: Build targets, train top and bottom models, predict, trade
 
 	def Run(self):
