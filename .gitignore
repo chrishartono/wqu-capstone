@@ -179,3 +179,5 @@ data_local/
 # *.csv
 # *.zip
 .vscode/
+*.zip
+*.csv
