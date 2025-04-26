@@ -2,6 +2,7 @@ import logging
 from itertools import combinations
 
 import pandas as pd
+from arch.unitroot._phillips_ouliaris import PhillipsOuliarisTestResults
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
@@ -25,7 +26,7 @@ def CreateAllPossibleCombinations(prices_df: pd.DataFrame):
 	return pair_combinations
 
 def SearchForGoodCombinations(prices_df: pd.DataFrame, all_possible_combinations: list, comovement_type: ComovementType, n_jobs: int) \
-		-> list[tuple[str, str]]:
+		-> list[tuple[tuple[str, str], PhillipsOuliarisTestResults]]:
 	logging.info(f'Start searching for good combinations from total of {len(all_possible_combinations)} possible combinations '
 				 f'from {prices_df.index[0]} to {prices_df.index[-1]} and for pairs: {prices_df.columns}')
 

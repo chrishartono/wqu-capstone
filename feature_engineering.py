@@ -4,6 +4,9 @@ import numpy as np
 import pandas as pd
 from hurst import compute_Hc
 
+from utils.helpers import DaysWindowToPeriods
+
+
 def add_basic_features(df: pd.DataFrame, combination: tuple[str, str]):
 	columns_for_returns = ['close', 'volume', 'close-open', 'high-low']
 
@@ -43,18 +46,15 @@ def add_rolling_hurst(data: pd.DataFrame, window_periods: int):
 def clean(df: pd.DataFrame):
 	df.replace([np.inf, -np.inf], np.nan, inplace=True)
 	df.ffill(inplace=True)
-	df.fillna(0)
+
+	df.dropna(inplace=True)
 
 	return df
 
 def AddFeatures(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], rolling_window_days: int) -> tuple[pd.DataFrame, pd.DataFrame]:
 	data = pd.concat([train, test], axis=0)
 
-	rolling_delta = timedelta(days=rolling_window_days)
-	rolling_window_end_date = data.index[0] + rolling_delta
-	df_slice = data[data.index <= rolling_window_end_date]
-
-	window_periods = len(df_slice)
+	window_periods = DaysWindowToPeriods(data, rolling_window_days)
 
 	data = add_basic_features(data, combination)
 	data = add_zscores(data, window_periods)

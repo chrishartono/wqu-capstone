@@ -24,7 +24,7 @@ if __name__ == '__main__':
 	last_rows = 3000
 	combination = ('close_sol-usdt', 'close_avax-usdt')
 
-	prices_df = pd.read_csv('binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
+	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 
 	# test_cointegration(prices_df[list(combination)], combination)
 
