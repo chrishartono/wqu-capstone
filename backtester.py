@@ -22,19 +22,21 @@ class Backtester:
 				 train_window_days: int,
 				 val_window_days: int,
 				 trade_window_days: int,
-				 rolling_window_days: int,
+				 features_rolling_window_days: int,
+				 target_rolling_window_days: int,
 				 all_possible_combinations: list[tuple[str, str]],
 				 comovement_detection_type: ComovementType,
-				 numb_target_neighbors: int,
+				 num_target_neighbors: int,
 				 use_parallelization: bool):
 
 		self.__prices_df = prices_df
 		self.__train_window_days = train_window_days
 		self.__val_window_days = val_window_days
-		self.__rolling_window_days = rolling_window_days
+		self.__features_rolling_window_days = features_rolling_window_days
+		self.__target_rolling_window_days = target_rolling_window_days
 		self.__all_possible_combinations = all_possible_combinations
 		self.__comovement_type = comovement_detection_type
-		self.__numb_target_neighbors = numb_target_neighbors
+		self.__num_target_neighbors = num_target_neighbors
 		self.__date_bounds = self.__make_date_bounds(prices_df, train_window_days, trade_window_days)
 		self.__n_jobs = -1 if use_parallelization else 1
 
@@ -62,7 +64,7 @@ class Backtester:
 		while current_bound_date + train_window <= last_date:
 
 			if current_bound_date + train_window + trade_window > last_date:
-				date_bounds.append((current_bound_date, last_date + train_window, last_date))
+				date_bounds.append((current_bound_date, current_bound_date + train_window, last_date))
 			else:
 				date_bounds.append((current_bound_date, current_bound_date + train_window, current_bound_date + train_window + trade_window))
 
@@ -74,15 +76,15 @@ class Backtester:
 		train = AddCointCoefSpread(train, combination, coint_vector)
 		test = AddCointCoefSpread(test, combination, coint_vector)
 
-		train, test = AddFeatures(train, test, combination, self.__rolling_window_days)
+		train, test = AddFeatures(train, test, combination, self.__features_rolling_window_days)
 		data = pd.concat([train, test], axis=0)
 
-		window_rows = DaysWindowToPeriods(data, self.__train_window_days)
+		window_rows = DaysWindowToPeriods(data, self.__target_rolling_window_days)
 		data = AddPeakNeighboursSingleColumn(data,
 											 target_col='spread',
 											 period=window_rows,
 											 resulting_target_column='TARGET',
-											 numNeighbours=self.__numb_target_neighbors)
+											 numNeighbours=self.__num_target_neighbors)
 
 		train = data.iloc[:len(train)]
 		test = data.iloc[len(train):]
@@ -98,9 +100,15 @@ class Backtester:
 					 f'train set from {train.index[0]} to {train.index[-1]} and '
 					 f'test set from {test.index[0]} to {test.index[-1]}')
 
-		params = [(train[list(comb)], test[list(comb)], comb, coint_vector) for comb, coint_vector in good_combinations]
+		params = []
+		for comb, coint_vector in good_combinations:
+			pair1 = comb[0].split('_')[1]
+			pair2 = comb[1].split('_')[1]
+			comb_columns = [col for col in train.columns if pair1 in col or pair2 in col]
+			params.append((train[comb_columns], test[comb_columns], comb, coint_vector))
+
 		results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
-				   (delayed(self.__prepare_combination_data)(p) for p in tqdm(params, total=len(params), desc=" search:")))
+				   (delayed(self.__prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc="Train data preparations:")))
 
 		logging.info(f'Finally got {len(results)} data tuples')
 
@@ -116,7 +124,7 @@ class Backtester:
 			data_tuples = self.__prepare_all_combination_datas(good_combinations, all_train, all_test)
 
 			for comb_train, comb_test, comb in data_tuples:
-				preds = Train(comb_train, comb, self.__val_window_days)
+				preds = Train(comb_train, comb_test, self.__val_window_days)
 			# TODO: Run individual combinations, combine results into portfolio returns
 
 

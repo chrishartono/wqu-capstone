@@ -30,6 +30,7 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, val_window_days: int):
 	val_window_periods = DaysWindowToPeriods(train, val_window_days)
 
 	val = train.iloc[-val_window_periods:]
+	train = train.iloc[:len(train) - val_window_periods]
 
 	X_train = train.drop(columns=['TARGET'])
 	X_val = val.drop(columns=['TARGET'])
@@ -45,6 +46,6 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, val_window_days: int):
 	y_probs = clf.predict_proba(X_test)
 	y_pred = clf.predict(X_test)
 
-	show_clf_results(y_test, y_probs)
+	show_clf_results(y_test, y_probs, y_pred)
 
 	return y_pred

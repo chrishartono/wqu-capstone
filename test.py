@@ -1,9 +1,12 @@
 import logging
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 
-from comovement import test_cointegration
+from backtester import Backtester
+from combinations import CreateAllPossibleCombinations
+from comovement import ComovementType, test_cointegration
 from feature_engineering import AddFeatures
 from spread import AddPolyfitSpread
 from target_creation import AddPeakNeighboursSingleColumn
@@ -16,15 +19,10 @@ def SetLogging(logname: str, append: bool = False):
 						handlers=[logging.StreamHandler(), logging.FileHandler(logname, mode=mode)],
 						level=logging.INFO)
 
-if __name__ == '__main__':
-	now_str = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
-	SetLogging(f'wqu_capstone_{now_str}.log', False)
-
+def manual_test(prices_df: pd.DataFrame):
 	train_frac = 0.8
 	last_rows = 3000
 	combination = ('close_sol-usdt', 'close_avax-usdt')
-
-	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 
 	# test_cointegration(prices_df[list(combination)], combination)
 
@@ -48,3 +46,30 @@ if __name__ == '__main__':
 	# feats_df = pd.concat([train, test], axis=0)
 	# window_rows = int(len(train) / 20)
 	# feats_df = AddPeakNeighboursSingleColumn(feats_df, target_col='spread', period=window_rows, resulting_target_column='TARGET', numNeighbours=10)
+
+def backtest_test(prices_df: pd.DataFrame):
+	all_possible_combinations = CreateAllPossibleCombinations(prices_df)
+	np.random.shuffle(all_possible_combinations)
+
+	all_possible_combinations_slice = all_possible_combinations[:3]
+
+	backtester = Backtester(prices_df=prices_df,
+							train_window_days=180,
+							val_window_days=30,
+							trade_window_days=30,
+							features_rolling_window_days=10,
+							target_rolling_window_days=10,
+							all_possible_combinations=all_possible_combinations_slice,
+							comovement_detection_type=ComovementType.COINTEGRATION,
+							num_target_neighbors=10,
+							use_parallelization=False)
+	backtester.Run()
+
+if __name__ == '__main__':
+	now_str = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
+	SetLogging(f'wqu_capstone_{now_str}.log', False)
+
+	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
+
+	# manual_test(prices_df)
+	backtest_test(prices_df)

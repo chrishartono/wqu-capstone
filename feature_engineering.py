@@ -40,6 +40,7 @@ def add_rolling_hurst(data: pd.DataFrame, window_periods: int):
 	for col in hurst_columns:
 		data[f'{col}_shifted'] = data[col] + abs(data[col].min()) + 1
 		data[f'{col}_hurst'] = data[f'{col}_shifted'].rolling(window=window_periods).apply(lambda x: compute_Hc(x, kind='price', simplified=True)[0], raw=True)
+		data.drop([f'{col}_shifted'], axis=1, inplace=True)
 
 	return data
 
@@ -61,7 +62,8 @@ def AddFeatures(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str,
 	data = add_rolling_hurst(data, window_periods)
 
 	data = clean(data)
-	train = data.iloc[:len(train)]
-	test = data.iloc[len(train):]
+	train_len_after_nan_cutoff = len(data) - len(test)
+	train = data.iloc[:train_len_after_nan_cutoff]
+	test = data.iloc[train_len_after_nan_cutoff:]
 
 	return train, test
