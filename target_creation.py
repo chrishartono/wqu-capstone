@@ -40,9 +40,9 @@ def AddPeakNeighboursSingleColumn(feats_df: pd.DataFrame, target_col: str, perio
 
 	results[resulting_target_column].fillna(0, inplace=True)
 
-	fig, axes = plt.subplots(nrows=2, ncols=1)
-	results[target_col].plot(ax=axes[0])
-	axes[0].scatter(results.index[results[resulting_target_column] != 0], results.loc[results[resulting_target_column] != 0][target_col], color='red', marker='*')
-	plt.show()
+	# fig, axes = plt.subplots(nrows=2, ncols=1)
+	# results[target_col].plot(ax=axes[0])
+	# axes[0].scatter(results.index[results[resulting_target_column] != 0], results.loc[results[resulting_target_column] != 0][target_col], color='red', marker='*')
+	# plt.show()
 
 	return results

@@ -181,3 +181,4 @@ data_local/
 .vscode/
 *.zip
 *.csv
+catboost_info/

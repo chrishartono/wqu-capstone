@@ -1,8 +1,16 @@
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
+from arch.unitroot._phillips_ouliaris import PhillipsOuliarisTestResults
 
-def AddSpread(prices_df: pd.DataFrame, combination: tuple[str, str], coefs: np.ndarray = None) -> tuple[pd.DataFrame, np.ndarray]:
+
+def AddCointCoefSpread(prices_df: pd.DataFrame, combination: tuple[str, str], coint_vector: PhillipsOuliarisTestResults):
+	c0 = combination[0]
+	c1 = combination[1]
+
+	prices_df['spread'] = prices_df[c0]*coint_vector[c0] + prices_df[c1]*coint_vector[c1]
+	return prices_df
+
+def AddPolyfitSpread(prices_df: pd.DataFrame, combination: tuple[str, str], coefs: np.ndarray = None) -> tuple[pd.DataFrame, np.ndarray]:
 	"""
 	This function creates spread dataframe with OLS for train set.
 
