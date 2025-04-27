@@ -1,5 +1,13 @@
 import numpy as np
 import pandas as pd
+
+import warnings
+
+with warnings.catch_warnings():
+	warnings.simplefilter("ignore")
+	import pandas as pd
+pd.options.mode.chained_assignment = None
+
 from arch.unitroot._phillips_ouliaris import PhillipsOuliarisTestResults
 
 
