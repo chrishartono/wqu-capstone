@@ -182,3 +182,4 @@ data_local/
 *.zip
 *.csv
 catboost_info/
+*.png

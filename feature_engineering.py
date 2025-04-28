@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 
 import numpy as np
@@ -53,6 +54,9 @@ def clean(df: pd.DataFrame):
 	return df
 
 def AddFeatures(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], rolling_window_days: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+
+	logging.info(f'Start adding features for {combination}')
+
 	data = pd.concat([train, test], axis=0)
 
 	window_periods = DaysWindowToPeriods(data, rolling_window_days)

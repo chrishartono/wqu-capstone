@@ -45,18 +45,21 @@ def manual_test(prices_df: pd.DataFrame):
 	train, test = AddFeatures(train, test, combination, window_days)
 	# feats_df = pd.concat([train, test], axis=0)
 	# window_rows = int(len(train) / 20)
-	# feats_df = AddPeakNeighboursSingleColumn(feats_df, target_col='spread', period=window_rows, resulting_target_column='TARGET', numNeighbours=10)
+	# feats_df = AddPeakNeighboursSingleColumn(feats_df, combination, target_col='spread', period=window_rows, resulting_target_column='TARGET', numNeighbours=10)
 
 def backtest_test(prices_df: pd.DataFrame):
 	all_possible_combinations = CreateAllPossibleCombinations(prices_df)
 	np.random.shuffle(all_possible_combinations)
 
 	all_possible_combinations_slice = all_possible_combinations[:3]
-
+	all_possible_combinations_slice = [('close_icp-usdt', 'close_woo-usdt')]
+	trade_window_days = 30
+	train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
+	# train_window_days = 180
 	backtester = Backtester(prices_df=prices_df,
-							train_window_days=180,
-							val_window_days=30,
-							trade_window_days=30,
+							train_window_days=train_window_days,
+							val_window_days=trade_window_days,
+							trade_window_days=trade_window_days,
 							features_rolling_window_days=10,
 							target_rolling_window_days=10,
 							all_possible_combinations=all_possible_combinations_slice,

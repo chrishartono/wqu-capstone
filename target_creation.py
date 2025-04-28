@@ -1,3 +1,5 @@
+import logging
+
 import pandas as pd
 from matplotlib import pyplot as plt
 from scipy.signal import argrelmax, argrelmin
@@ -15,7 +17,12 @@ def set_extrem_shifted_indices(result_length: int, indices_loc: set, numNeighbou
 	return indices
 
 
-def AddPeakNeighboursSingleColumn(feats_df: pd.DataFrame, target_col: str, period: int, resulting_target_column: str, numNeighbours: int) -> pd.DataFrame:
+def AddPeakNeighboursSingleColumn(feats_df: pd.DataFrame,
+								  combination: tuple[str, str],
+								  target_col: str, period: int,
+								  resulting_target_column: str,
+								  numNeighbours: int) -> pd.DataFrame:
+	logging.info(f'Start target creation for {combination}')
 
 	results = feats_df.reset_index(drop=True)
 
@@ -40,9 +47,18 @@ def AddPeakNeighboursSingleColumn(feats_df: pd.DataFrame, target_col: str, perio
 
 	results[resulting_target_column].fillna(0, inplace=True)
 
-	# fig, axes = plt.subplots(nrows=2, ncols=1)
-	# results[target_col].plot(ax=axes[0])
-	# axes[0].scatter(results.index[results[resulting_target_column] != 0], results.loc[results[resulting_target_column] != 0][target_col], color='red', marker='*')
-	# plt.show()
+	fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 6))
+	ax.plot(results.index, results[target_col], 'b-')
+	ax.scatter(results.index[results[resulting_target_column] == 1], results.loc[results[resulting_target_column] == 1][target_col], color='green',
+	marker='*', label='minima')
+	ax.scatter(results.index[results[resulting_target_column] == 2], results.loc[results[resulting_target_column] == 2][target_col], color='red',
+	marker='*', label='maxima')
+	ax.set_xlabel('Timestamp')
+	ax.set_ylabel('Returns')
+	ax.set_title(f'{combination} spread with points chosen as targets')
+	ax.legend()
+	plt.tight_layout()
+	fig.savefig(f'target.png', dpi=300)
+	plt.show()
 
 	return results

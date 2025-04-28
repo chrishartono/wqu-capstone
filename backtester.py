@@ -81,6 +81,7 @@ class Backtester:
 
 		window_rows = DaysWindowToPeriods(data, self.__target_rolling_window_days)
 		data = AddPeakNeighboursSingleColumn(data,
+											 combination,
 											 target_col='spread',
 											 period=window_rows,
 											 resulting_target_column='TARGET',
@@ -124,7 +125,7 @@ class Backtester:
 			data_tuples = self.__prepare_all_combination_datas(good_combinations, all_train, all_test)
 
 			for comb_train, comb_test, comb in data_tuples:
-				preds = Train(comb_train, comb_test, self.__val_window_days)
+				preds = Train(comb_train, comb_test, comb, self.__val_window_days)
 			# TODO: Run individual combinations, combine results into portfolio returns
 
 
