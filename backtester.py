@@ -14,7 +14,7 @@ from feature_engineering import AddFeatures
 from spread import AddCointCoefSpread
 from target_creation import AddPeakNeighboursSingleColumn
 from utils.data_structures import SignalTypes
-from utils.helpers import DaysWindowToPeriods
+from utils.helpers import DaysWindowToPeriods, SemiStd
 
 
 class Backtester:
@@ -31,7 +31,8 @@ class Backtester:
 				 num_target_neighbors: int,
 				 use_parallelization: bool,
 				 combination_limit: float,
-				 trade_limit: float):
+				 trade_limit: float,
+				 risk_free_rate: float):
 
 		self.__prices_df = prices_df
 		self.__train_window_days = train_window_days
@@ -45,6 +46,9 @@ class Backtester:
 		self.__n_jobs = -1 if use_parallelization else 1
 		self.__combination_limit = combination_limit
 		self.__trade_limit = trade_limit
+		self.__risk_free_rate = risk_free_rate
+
+		self.__annualized_multiplier = np.sqrt(24 * 365)
 
 	@staticmethod
 	def __make_date_bounds(prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int):
@@ -97,7 +101,8 @@ class Backtester:
 		test = data.iloc[len(train):]
 
 		return train, test, combination, coint_vector
-		# TODO: Build targets, train top and bottom models, predict, trade
+
+	# TODO: Build targets, train top and bottom models, predict, trade
 
 	def __prepare_all_combination_datas(self,
 										good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]],
@@ -121,7 +126,9 @@ class Backtester:
 
 		return results
 
-	def _update_stats(self, prices, pair_cash_pos, pair_pos, pair_mtm, last_pair_cash_pos, last_pair_pos, coef, i):
+	def __update_stats(self, prices, combination_pos, pair_cash_pos, pair_pos, pair_mtm, combination_exposure_trades, last_pair_cash_pos, last_pair_pos, coef,
+					   i):
+		combination_pos.append(combination_exposure_trades)
 		pair_cash_pos[0].append(last_pair_cash_pos[0])
 		pair_cash_pos[1].append(last_pair_cash_pos[1])
 		pair_pos[0].append(last_pair_pos[0])
@@ -129,35 +136,138 @@ class Backtester:
 		pair_mtm[0].append(last_pair_cash_pos[0] + last_pair_pos[0] * prices[0][i] * coef[0])
 		pair_mtm[1].append(last_pair_cash_pos[1] + last_pair_pos[1] * prices[1][i] * coef[1])
 
+	def __finalize_backtest(self,
+							prices,
+							combination_pos,
+							pair_cash_pos,
+							pair_pos,
+							pair_mtm,
+							combination_exposure_trades,
+							last_pair_cash_pos,
+							last_pair_pos,
+							coef,
+							i):
+		if combination_exposure_trades > 0:
+			pair_cash_pos[0].append(last_pair_cash_pos[0] - abs(last_pair_pos[0]) * prices[0][i] * coef[0])
+			pair_cash_pos[1].append(last_pair_cash_pos[1] - abs(last_pair_pos[1]) * prices[1][i] * coef[1])
+		elif combination_exposure_trades < 0:
+			pair_cash_pos[0].append(last_pair_cash_pos[0] + abs(last_pair_pos[0]) * prices[0][i] * coef[0])
+			pair_cash_pos[1].append(last_pair_cash_pos[1] + abs(last_pair_pos[1]) * prices[1][i] * coef[1])
+
+		combination_pos.append(0)
+		pair_pos[0].append(0)
+		pair_pos[1].append(0)
+		pair_mtm[0].append(pair_cash_pos[0][-1])
+		pair_mtm[1].append(pair_cash_pos[1][-1])
+
+	def __calc_metrics(self, combination_mtm: list[float], trading_days: float):
+		mtm = np.array(combination_mtm)
+
+		net_return = (mtm[-1] - mtm[0]) / mtm[0]
+		annualized_net_return = net_return / trading_days * 365
+
+		mtm_returns = mtm[1:] / mtm[:-1] - 1
+		mean_mtm_return = np.mean(mtm_returns)
+		std_mtm_return = np.std(mtm_returns)
+		semi_std_mtm_return = SemiStd(mtm_returns)
+		sharpe = (mean_mtm_return - self.__risk_free_rate) / std_mtm_return * self.__annualized_multiplier
+		sortino = (mean_mtm_return - self.__risk_free_rate) / semi_std_mtm_return * self.__annualized_multiplier
+
+		# accumulate max value and subtract actual value. doing this we get the maximum fall
+		runningDD = np.maximum.accumulate(mtm) - mtm
+		pointDD = runningDD.argmax()
+		DD = runningDD[pointDD]
+		peak = max(mtm[:pointDD]) if pointDD > 0 else 0
+		maxDD = DD / peak if peak != 0 else 0
+
+		cash_netprofit = mtm[-1] - mtm[0]
+		recoveryFactor = cash_netprofit / maxDD if maxDD != 0 else 0
+
+		metrics = {'annualized_net_return': annualized_net_return,
+				   'sharpe'               : sharpe,
+				   'sortino'              : sortino,
+				   'maxDD'                : maxDD,
+				   'recoveryFactor'       : recoveryFactor}
+		return metrics
+
 	def __trading_logic(self, combination: tuple[str, str], test: pd.DataFrame, preds: np.ndarray, coint_vector: PhillipsOuliarisTestResults):
 		pair0 = combination[0]
 		pair1 = combination[1]
-		coef = [coint_vector[pair0], coint_vector[pair1]]
+		coef_orig = [coint_vector[pair0], coint_vector[pair1]]
 		prices = [test[pair0].to_list(), test[pair1].to_list()]
 
+		combination_pos = []
 		pair_cash_pos = [[], []]
 		pair_pos = [[], []]
 		pair_mtm = [[], []]
 
-		comb_pos = 0
+		# Max number of trades we can open according to backtest settings: trade_limit and combination_limit
+		max_exposure = int(self.__combination_limit / self.__trade_limit)
+
+		# Current strategy exposure in number of open trades
+		combination_exposure_trades = 0
+
+		# Latest cumulative cash position for each pair. If we buy pair, we spend cash, so cash position is negative. And vice versa.
 		last_pair_cash_pos = [0, 0]
+
+		# Lates cumulative pair position in trades. Buy once, get position=1.
 		last_pair_pos = [0, 0]
+
 		for i, prediction in enumerate(preds):
 
-			if prediction == SignalTypes.NONE.value:
-				self._update_stats(prices, pair_cash_pos, pair_pos, pair_mtm, last_pair_cash_pos, last_pair_pos, coef, i)
-				continue
+			# Here we calculate the total margin for an open combination position based on current prices and cointegration coefficients.
+			# Margin value equals total abs cash flow. But we have a trade_limit setting, so we have to adjust our trade coefficients accordingly.
+			face_value_margin = abs(prices[0][i] * coef_orig[0]) + abs(prices[1][i] * coef_orig[1])
+			# So if our face_value_margin was > trade_limit, we will shrink our coefs so that total trade margin does not exceed trade_limit
+			coef_adjustment = self.__trade_limit / face_value_margin
+			coef = [coef_orig[0] * coef_adjustment, coef_orig[1] * coef_adjustment]
 
 			if prediction == SignalTypes.BUY.value:
-				if comb_pos + self.__trade_limit > self.__combination_limit:
-					self._update_stats(prices, pair_cash_pos, pair_pos, pair_mtm, last_pair_cash_pos, last_pair_pos, coef, i)
-					continue
+				if combination_exposure_trades + 1 <= max_exposure:
+					# We BUY spread. Increase strategy exposure by 1 trade
+					combination_exposure_trades += 1
 
-				comb_pos += self.__trade_limit
-				last_pair_cash_pos
+					# If we BUY spread, it means that we use coefs with signs as they were given by cointegration.
+					# Say we had cointegration coefs [0.8, -3.8]. Buying spread means buying 0.8 pair0 and selling 3.8 pair1.
+					# But cash flow has opposite sign. So we have spent cash to buy 0.8 pair0 and earned  after selling 3.8 pair1.
+					# To represent this we subtract trade volume from last cash_pos. If coef > 0, it means we should buy, then we subtract trade volume.
+					# If coef < 0, it means we should sell, then minus * minus gives plus => we add trade volume.
+					# And as this is a cumulative cash_pos, we add it to the previous one.
+					last_pair_cash_pos = [last_pair_cash_pos[0] - prices[0][i] * coef[0], last_pair_cash_pos[1] - prices[1][i] * coef[1]]
+					# Positions counted as number of trades. Add to the previous.
+					last_pair_pos = [last_pair_pos[0] + np.sign(coef[0]), last_pair_pos[1] + np.sign(coef[1])]
 
+			elif prediction == SignalTypes.SELL.value:
+				if combination_exposure_trades - 1 >= -max_exposure:
+					combination_exposure_trades -= 1
+					# Opposite here. Flip the signs.
+					last_pair_cash_pos = [last_pair_cash_pos[0] + prices[0][i] * coef[0], last_pair_cash_pos[1] + prices[1][i] * coef[1]]
+					last_pair_pos = [last_pair_pos[0] - np.sign(coef[0]), last_pair_pos[1] - np.sign(coef[1])]
 
-		pass
+			# Add all last values to the lists of running statistics.
+			self.__update_stats(prices,
+								combination_pos,
+								pair_cash_pos,
+								pair_pos,
+								pair_mtm,
+								combination_exposure_trades,
+								last_pair_cash_pos,
+								last_pair_pos,
+								coef,
+								i)
+
+		(self.__finalize_backtest(prices, combination_pos, pair_cash_pos, pair_pos, pair_mtm, combination_exposure_trades, last_pair_cash_pos, last_pair_pos,
+								  coef, i))
+
+		trading_days = (test.index[-1] - test.index[0]).days
+		combination_mtm = [t[0] + t[1] + self.__combination_limit for t in zip(*pair_mtm)]
+		metrics = self.__calc_metrics(combination_mtm, trading_days)
+
+		updated_index = test.index.append(test.index[-1] + timedelta(seconds=10))
+		stats_df = pd.DataFrame(combination_mtm, index=updated_index, columns=['combination_mtm'])
+		stats_df[f'combination_pos'] = combination_pos
+
+		return stats_df, metrics
 
 	def Run(self):
 
@@ -170,6 +280,4 @@ class Backtester:
 
 			for comb_train_set, comb_test_set, combination, coint_vector in data_tuples:
 				preds = Train(comb_train_set, comb_test_set, combination, self.__val_window_days)
-			# TODO: Run individual combinations, combine results into portfolio returns
-
-
+# TODO: Run individual combinations, combine results into portfolio returns
