@@ -43,24 +43,24 @@ def AddPeakNeighboursSingleColumn(feats_df: pd.DataFrame,
 	max_all_indices_set -= intersection
 	min_all_indices_set -= intersection
 	results.loc[list(max_all_indices_set), resulting_target_column] = SignalTypes.SELL
-	results.loc[list(min_all_indices_set), resulting_target_column] = SignalTypes.Buy
+	results.loc[list(min_all_indices_set), resulting_target_column] = SignalTypes.BUY
 
 	results.index = feats_df.index
 
 	results[resulting_target_column].fillna(0, inplace=True)
 
-	fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 6))
-	ax.plot(results.index, results[target_col], 'b-')
-	ax.scatter(results.index[results[resulting_target_column] == 1], results.loc[results[resulting_target_column] == 1][target_col], color='green',
-	marker='*', label='minima')
-	ax.scatter(results.index[results[resulting_target_column] == 2], results.loc[results[resulting_target_column] == 2][target_col], color='red',
-	marker='*', label='maxima')
-	ax.set_xlabel('Timestamp')
-	ax.set_ylabel('Returns')
-	ax.set_title(f'{combination} spread with points chosen as targets')
-	ax.legend()
-	plt.tight_layout()
-	fig.savefig(f'target.png', dpi=300)
-	plt.show()
+	# fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 6))
+	# ax.plot(results.index, results[target_col], 'b-')
+	# ax.scatter(results.index[results[resulting_target_column] == 1], results.loc[results[resulting_target_column] == 1][target_col], color='green',
+	# marker='*', label='minima')
+	# ax.scatter(results.index[results[resulting_target_column] == 2], results.loc[results[resulting_target_column] == 2][target_col], color='red',
+	# marker='*', label='maxima')
+	# ax.set_xlabel('Timestamp')
+	# ax.set_ylabel('Returns')
+	# ax.set_title(f'{combination} spread with points chosen as targets')
+	# ax.legend()
+	# plt.tight_layout()
+	# fig.savefig(f'target.png', dpi=300)
+	# plt.show()
 
 	return results

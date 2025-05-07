@@ -133,8 +133,9 @@ class Backtester:
 		pair_cash_pos[1].append(last_pair_cash_pos[1])
 		pair_pos[0].append(last_pair_pos[0])
 		pair_pos[1].append(last_pair_pos[1])
-		pair_mtm[0].append(last_pair_cash_pos[0] + last_pair_pos[0] * prices[0][i] * coef[0])
-		pair_mtm[1].append(last_pair_cash_pos[1] + last_pair_pos[1] * prices[1][i] * coef[1])
+		# Sign is already in last_pair_pos, so coef is taken as abs
+		pair_mtm[0].append(last_pair_cash_pos[0] + last_pair_pos[0] * prices[0][i] * abs(coef[0]))
+		pair_mtm[1].append(last_pair_cash_pos[1] + last_pair_pos[1] * prices[1][i] * abs(coef[1]))
 
 	def __finalize_backtest(self,
 							prices,
@@ -200,6 +201,7 @@ class Backtester:
 		pair_cash_pos = [[], []]
 		pair_pos = [[], []]
 		pair_mtm = [[], []]
+		coef_history = [[], []]
 
 		# Max number of trades we can open according to backtest settings: trade_limit and combination_limit
 		max_exposure = int(self.__combination_limit / self.__trade_limit)
@@ -220,7 +222,8 @@ class Backtester:
 			face_value_margin = abs(prices[0][i] * coef_orig[0]) + abs(prices[1][i] * coef_orig[1])
 			# So if our face_value_margin was > trade_limit, we will shrink our coefs so that total trade margin does not exceed trade_limit
 			coef_adjustment = self.__trade_limit / face_value_margin
-			coef = [coef_orig[0] * coef_adjustment, coef_orig[1] * coef_adjustment]
+			# coef = [coef_orig[0] * coef_adjustment, coef_orig[1] * coef_adjustment]
+			coef = [coef_orig[0], coef_orig[1]]
 
 			if prediction == SignalTypes.BUY.value:
 				if combination_exposure_trades + 1 <= max_exposure:
@@ -244,6 +247,8 @@ class Backtester:
 					last_pair_cash_pos = [last_pair_cash_pos[0] + prices[0][i] * coef[0], last_pair_cash_pos[1] + prices[1][i] * coef[1]]
 					last_pair_pos = [last_pair_pos[0] - np.sign(coef[0]), last_pair_pos[1] - np.sign(coef[1])]
 
+			coef_history[0].append(coef[0])
+			coef_history[1].append(coef[1])
 			# Add all last values to the lists of running statistics.
 			self.__update_stats(prices,
 								combination_pos,
@@ -256,8 +261,28 @@ class Backtester:
 								coef,
 								i)
 
-		(self.__finalize_backtest(prices, combination_pos, pair_cash_pos, pair_pos, pair_mtm, combination_exposure_trades, last_pair_cash_pos, last_pair_pos,
-								  coef, i))
+		self.__finalize_backtest(prices,
+								 combination_pos,
+								 pair_cash_pos,
+								 pair_pos,
+								 pair_mtm,
+								 combination_exposure_trades,
+								 last_pair_cash_pos,
+								 last_pair_pos,
+								 coef,
+								 i)
+
+		res_df = pd.DataFrame(prices[0], columns=[pair0])
+		res_df['coef0'] = coef_history[0]
+		res_df['cash_pos0'] = pair_cash_pos[0][:-1]
+		res_df['pos0'] = pair_pos[0][:-1]
+		res_df['mtm0'] = pair_mtm[0][:-1]
+		res_df[pair1] = prices[1]
+		res_df['coef1'] = coef_history[1]
+		res_df['cash_pos1'] = pair_cash_pos[1][:-1]
+		res_df['pos1'] = pair_pos[1][:-1]
+		res_df['mtm1'] = pair_mtm[1][:-1]
+
 
 		trading_days = (test.index[-1] - test.index[0]).days
 		combination_mtm = [t[0] + t[1] + self.__combination_limit for t in zip(*pair_mtm)]
@@ -280,4 +305,5 @@ class Backtester:
 
 			for comb_train_set, comb_test_set, combination, coint_vector in data_tuples:
 				preds = Train(comb_train_set, comb_test_set, combination, self.__val_window_days)
+				stats_df, metrics = self.__trading_logic(combination, comb_test_set, preds, coint_vector)
 # TODO: Run individual combinations, combine results into portfolio returns
