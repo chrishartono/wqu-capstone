@@ -65,7 +65,9 @@ def backtest_test(prices_df: pd.DataFrame):
 							all_possible_combinations=all_possible_combinations_slice,
 							comovement_detection_type=ComovementType.COINTEGRATION,
 							num_target_neighbors=10,
-							use_parallelization=False)
+							use_parallelization=False,
+							combination_limit=1000,
+							trade_limit=1000)
 	backtester.Run()
 
 if __name__ == '__main__':

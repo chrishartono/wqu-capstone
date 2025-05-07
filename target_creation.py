@@ -4,6 +4,8 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from scipy.signal import argrelmax, argrelmin
 
+from utils.data_structures import SignalTypes
+
 
 def set_extrem_shifted_indices(result_length: int, indices_loc: set, numNeighbours: int) -> set[int]:
 	indices = set()
@@ -26,7 +28,7 @@ def AddPeakNeighboursSingleColumn(feats_df: pd.DataFrame,
 
 	results = feats_df.reset_index(drop=True)
 
-	results[resulting_target_column] = 0
+	results[resulting_target_column] = SignalTypes.NONE
 	result_length = len(results)
 
 	max_indices = set(argrelmax(feats_df[target_col].values, order=period)[0])
@@ -40,8 +42,8 @@ def AddPeakNeighboursSingleColumn(feats_df: pd.DataFrame,
 	intersection = min_all_indices_set & max_all_indices_set
 	max_all_indices_set -= intersection
 	min_all_indices_set -= intersection
-	results.loc[list(max_all_indices_set), resulting_target_column] = 2
-	results.loc[list(min_all_indices_set), resulting_target_column] = 1
+	results.loc[list(max_all_indices_set), resulting_target_column] = SignalTypes.SELL
+	results.loc[list(min_all_indices_set), resulting_target_column] = SignalTypes.Buy
 
 	results.index = feats_df.index
 
