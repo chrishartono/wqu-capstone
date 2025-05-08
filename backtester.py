@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from arch.unitroot._phillips_ouliaris import PhillipsOuliarisTestResults
 from joblib import Parallel, delayed
+from pandas import DatetimeIndex
 from tqdm import tqdm
 
 from bottop_prediction import Train
@@ -148,12 +149,15 @@ class Backtester:
 							last_pair_pos,
 							coef,
 							i):
-		if combination_exposure_trades > 0:
-			pair_cash_pos[0].append(last_pair_cash_pos[0] - abs(last_pair_pos[0]) * prices[0][i] * coef[0])
-			pair_cash_pos[1].append(last_pair_cash_pos[1] - abs(last_pair_pos[1]) * prices[1][i] * coef[1])
-		elif combination_exposure_trades < 0:
-			pair_cash_pos[0].append(last_pair_cash_pos[0] + abs(last_pair_pos[0]) * prices[0][i] * coef[0])
-			pair_cash_pos[1].append(last_pair_cash_pos[1] + abs(last_pair_pos[1]) * prices[1][i] * coef[1])
+		if combination_exposure_trades != 0:
+			pair_cash_pos[0].append(last_pair_cash_pos[0] + last_pair_pos[0] * prices[0][i] * abs(coef[0]))
+			pair_cash_pos[1].append(last_pair_cash_pos[1] + last_pair_pos[1] * prices[1][i] * abs(coef[1]))
+		# if combination_exposure_trades > 0:
+		# 	pair_cash_pos[0].append(last_pair_cash_pos[0] + abs(last_pair_pos[0]) * prices[0][i] * coef[0])
+		# 	pair_cash_pos[1].append(last_pair_cash_pos[1] - abs(last_pair_pos[1]) * prices[1][i] * coef[1])
+		# elif combination_exposure_trades < 0:
+		# 	pair_cash_pos[0].append(last_pair_cash_pos[0] - abs(last_pair_pos[0]) * prices[0][i] * coef[0])
+		# 	pair_cash_pos[1].append(last_pair_cash_pos[1] + abs(last_pair_pos[1]) * prices[1][i] * coef[1])
 
 		combination_pos.append(0)
 		pair_pos[0].append(0)
@@ -197,6 +201,12 @@ class Backtester:
 		coef_orig = [coint_vector[pair0], coint_vector[pair1]]
 		prices = [test[pair0].to_list(), test[pair1].to_list()]
 
+		# Here we calculate the total margin for an open combination position based on current prices and cointegration coefficients.
+		# Margin value equals total abs cash flow. But we have a trade_limit setting, so we have to adjust our trade coefficients accordingly.
+		# face_value_margin = abs(prices[0][0] * coef_orig[0]) + abs(prices[1][0] * coef_orig[1])
+		# So if our face_value_margin was > trade_limit, we will shrink our coefs so that total trade margin does not exceed trade_limit
+		# coef_adjustment = self.__trade_limit / face_value_margin
+
 		combination_pos = []
 		pair_cash_pos = [[], []]
 		pair_pos = [[], []]
@@ -216,12 +226,6 @@ class Backtester:
 		last_pair_pos = [0, 0]
 
 		for i, prediction in enumerate(preds):
-
-			# Here we calculate the total margin for an open combination position based on current prices and cointegration coefficients.
-			# Margin value equals total abs cash flow. But we have a trade_limit setting, so we have to adjust our trade coefficients accordingly.
-			face_value_margin = abs(prices[0][i] * coef_orig[0]) + abs(prices[1][i] * coef_orig[1])
-			# So if our face_value_margin was > trade_limit, we will shrink our coefs so that total trade margin does not exceed trade_limit
-			coef_adjustment = self.__trade_limit / face_value_margin
 			# coef = [coef_orig[0] * coef_adjustment, coef_orig[1] * coef_adjustment]
 			coef = [coef_orig[0], coef_orig[1]]
 
@@ -261,35 +265,41 @@ class Backtester:
 								coef,
 								i)
 
-		self.__finalize_backtest(prices,
-								 combination_pos,
-								 pair_cash_pos,
-								 pair_pos,
-								 pair_mtm,
-								 combination_exposure_trades,
-								 last_pair_cash_pos,
-								 last_pair_pos,
-								 coef,
-								 i)
+		# self.__finalize_backtest(prices,
+		# 						 combination_pos,
+		# 						 pair_cash_pos,
+		# 						 pair_pos,
+		# 						 pair_mtm,
+		# 						 combination_exposure_trades,
+		# 						 last_pair_cash_pos,
+		# 						 last_pair_pos,
+		# 						 coef,
+		# 						 i)
 
-		res_df = pd.DataFrame(prices[0], columns=[pair0])
-		res_df['coef0'] = coef_history[0]
-		res_df['cash_pos0'] = pair_cash_pos[0][:-1]
-		res_df['pos0'] = pair_pos[0][:-1]
-		res_df['mtm0'] = pair_mtm[0][:-1]
-		res_df[pair1] = prices[1]
-		res_df['coef1'] = coef_history[1]
-		res_df['cash_pos1'] = pair_cash_pos[1][:-1]
-		res_df['pos1'] = pair_pos[1][:-1]
-		res_df['mtm1'] = pair_mtm[1][:-1]
-
+		# res_df = pd.DataFrame(prices[0], columns=[pair0])
+		# res_df['coef0'] = coef_history[0]
+		# res_df['cash_pos0'] = pair_cash_pos[0][:-1]
+		# res_df['pos0'] = pair_pos[0][:-1]
+		# res_df['mtm0'] = pair_mtm[0][:-1]
+		# res_df[pair1] = prices[1]
+		# res_df['coef1'] = coef_history[1]
+		# res_df['cash_pos1'] = pair_cash_pos[1][:-1]
+		# res_df['pos1'] = pair_pos[1][:-1]
+		# res_df['mtm1'] = pair_mtm[1][:-1]
 
 		trading_days = (test.index[-1] - test.index[0]).days
-		combination_mtm = [t[0] + t[1] + self.__combination_limit for t in zip(*pair_mtm)]
-		metrics = self.__calc_metrics(combination_mtm, trading_days)
+		combination_mtm_0based = [t[0] + t[1] for t in zip(*pair_mtm)]
+		capital_usage = [abs(t[0]) + abs(t[1]) for t in zip(*pair_cash_pos)]
+		max_capital_usage = max(capital_usage)
+		combination_mtm_max_capital_based = [mtm + max_capital_usage for mtm in combination_mtm_0based]
 
-		updated_index = test.index.append(test.index[-1] + timedelta(seconds=10))
-		stats_df = pd.DataFrame(combination_mtm, index=updated_index, columns=['combination_mtm'])
+		metrics = self.__calc_metrics(combination_mtm_max_capital_based, trading_days)
+
+		# shifted_last_idx_value = test.index[-1] + timedelta(seconds=10)
+		# new_idx_value_as_list = DatetimeIndex([shifted_last_idx_value], dtype='datetime64[ns]', freq=None)
+		# updated_index = test.index.append(new_idx_value_as_list)
+
+		stats_df = pd.DataFrame(combination_mtm_max_capital_based, index=test.index, columns=['combination_mtm'])
 		stats_df[f'combination_pos'] = combination_pos
 
 		return stats_df, metrics

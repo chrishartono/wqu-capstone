@@ -68,7 +68,7 @@ def backtest_test(prices_df: pd.DataFrame):
 							use_parallelization=False,
 							combination_limit=1000,
 							trade_limit=1000,
-							risk_free_rate=0.02)
+							risk_free_rate=0)
 	backtester.Run()
 
 if __name__ == '__main__':
