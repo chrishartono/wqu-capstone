@@ -1,10 +1,15 @@
 import logging
-from datetime import timedelta
+import os
+import uuid
+from datetime import datetime, timedelta
+from typing import Any
 
 import numpy as np
+import pandas
 import pandas as pd
 from arch.unitroot._phillips_ouliaris import PhillipsOuliarisTestResults
 from joblib import Parallel, delayed
+from matplotlib import pyplot as plt
 from pandas import DatetimeIndex
 from tqdm import tqdm
 
@@ -33,8 +38,10 @@ class Backtester:
 				 use_parallelization: bool,
 				 combination_limit: float,
 				 trade_limit: float,
-				 risk_free_rate: float):
+				 risk_free_rate: float,
+				 fees: float):
 
+		self.__backtest_id = str(uuid.uuid4())
 		self.__prices_df = prices_df
 		self.__train_window_days = train_window_days
 		self.__val_window_days = val_window_days
@@ -48,8 +55,12 @@ class Backtester:
 		self.__combination_limit = combination_limit
 		self.__trade_limit = trade_limit
 		self.__risk_free_rate = risk_free_rate
+		self.__fees = fees
 
 		self.__annualized_multiplier = np.sqrt(24 * 365)
+
+		self.__portfolio_df = None
+		self.__stats_by_comb = {}
 
 	@staticmethod
 	def __make_date_bounds(prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int):
@@ -128,15 +139,15 @@ class Backtester:
 		return results
 
 	def __update_stats(self, prices, combination_pos, pair_cash_pos, pair_pos, pair_mtm, combination_exposure_trades, last_pair_cash_pos, last_pair_pos, coef,
-					   i):
+					   i, last_fees):
 		combination_pos.append(combination_exposure_trades)
 		pair_cash_pos[0].append(last_pair_cash_pos[0])
 		pair_cash_pos[1].append(last_pair_cash_pos[1])
 		pair_pos[0].append(last_pair_pos[0])
 		pair_pos[1].append(last_pair_pos[1])
 		# Sign is already in last_pair_pos, so coef is taken as abs
-		pair_mtm[0].append(last_pair_cash_pos[0] + last_pair_pos[0] * prices[0][i] * abs(coef[0]))
-		pair_mtm[1].append(last_pair_cash_pos[1] + last_pair_pos[1] * prices[1][i] * abs(coef[1]))
+		pair_mtm[0].append(last_pair_cash_pos[0] + last_pair_pos[0] * prices[0][i] * abs(coef[0]) - last_fees[0])
+		pair_mtm[1].append(last_pair_cash_pos[1] + last_pair_pos[1] * prices[1][i] * abs(coef[1]) - last_fees[1])
 
 	def __finalize_backtest(self,
 							prices,
@@ -165,9 +176,7 @@ class Backtester:
 		pair_mtm[0].append(pair_cash_pos[0][-1])
 		pair_mtm[1].append(pair_cash_pos[1][-1])
 
-	def __calc_metrics(self, combination_mtm: list[float], trading_days: float):
-		mtm = np.array(combination_mtm)
-
+	def __calc_metrics(self, mtm: np.ndarray, trading_days: float):
 		net_return = (mtm[-1] - mtm[0]) / mtm[0]
 		annualized_net_return = net_return / trading_days * 365
 
@@ -199,7 +208,7 @@ class Backtester:
 		pair0 = combination[0]
 		pair1 = combination[1]
 		coef_orig = [coint_vector[pair0], coint_vector[pair1]]
-		prices = [test[pair0].to_list(), test[pair1].to_list()]
+		prices = [test[pair0].to_numpy(), test[pair1].to_numpy()]
 
 		# Here we calculate the total margin for an open combination position based on current prices and cointegration coefficients.
 		# Margin value equals total abs cash flow. But we have a trade_limit setting, so we have to adjust our trade coefficients accordingly.
@@ -222,12 +231,14 @@ class Backtester:
 		# Latest cumulative cash position for each pair. If we buy pair, we spend cash, so cash position is negative. And vice versa.
 		last_pair_cash_pos = [0, 0]
 
-		# Lates cumulative pair position in trades. Buy once, get position=1.
+		# Latest cumulative pair position in trades. Buy once, get position=1.
 		last_pair_pos = [0, 0]
 
 		for i, prediction in enumerate(preds):
 			# coef = [coef_orig[0] * coef_adjustment, coef_orig[1] * coef_adjustment]
 			coef = [coef_orig[0], coef_orig[1]]
+
+			last_fees = [0, 0]
 
 			if prediction == SignalTypes.BUY.value:
 				if combination_exposure_trades + 1 <= max_exposure:
@@ -243,6 +254,7 @@ class Backtester:
 					last_pair_cash_pos = [last_pair_cash_pos[0] - prices[0][i] * coef[0], last_pair_cash_pos[1] - prices[1][i] * coef[1]]
 					# Positions counted as number of trades. Add to the previous.
 					last_pair_pos = [last_pair_pos[0] + np.sign(coef[0]), last_pair_pos[1] + np.sign(coef[1])]
+					last_fees = [abs(prices[0][i] * coef[0] * self.__fees), abs(prices[1][i] * coef[1] * self.__fees)]
 
 			elif prediction == SignalTypes.SELL.value:
 				if combination_exposure_trades - 1 >= -max_exposure:
@@ -250,6 +262,7 @@ class Backtester:
 					# Opposite here. Flip the signs.
 					last_pair_cash_pos = [last_pair_cash_pos[0] + prices[0][i] * coef[0], last_pair_cash_pos[1] + prices[1][i] * coef[1]]
 					last_pair_pos = [last_pair_pos[0] - np.sign(coef[0]), last_pair_pos[1] - np.sign(coef[1])]
+					last_fees = [abs(prices[0][i] * coef[0] * self.__fees), abs(prices[1][i] * coef[1] * self.__fees)]
 
 			coef_history[0].append(coef[0])
 			coef_history[1].append(coef[1])
@@ -263,7 +276,8 @@ class Backtester:
 								last_pair_cash_pos,
 								last_pair_pos,
 								coef,
-								i)
+								i,
+								last_fees)
 
 		# self.__finalize_backtest(prices,
 		# 						 combination_pos,
@@ -293,16 +307,108 @@ class Backtester:
 		max_capital_usage = max(capital_usage)
 		combination_mtm_max_capital_based = [mtm + max_capital_usage for mtm in combination_mtm_0based]
 
-		metrics = self.__calc_metrics(combination_mtm_max_capital_based, trading_days)
-
 		# shifted_last_idx_value = test.index[-1] + timedelta(seconds=10)
 		# new_idx_value_as_list = DatetimeIndex([shifted_last_idx_value], dtype='datetime64[ns]', freq=None)
 		# updated_index = test.index.append(new_idx_value_as_list)
 
-		stats_df = pd.DataFrame(combination_mtm_max_capital_based, index=test.index, columns=['combination_mtm'])
-		stats_df[f'combination_pos'] = combination_pos
+		stats_df = pd.DataFrame(combination_mtm_max_capital_based, index=test.index, columns=['mtm'])
+
+		coef_history_arrays = [np.array(coef_history[0]), np.array(coef_history[1])]
+		stats_df['spread'] = prices[0] * coef_history_arrays[0] + prices[1] * coef_history_arrays[1]
+		stats_df[f'pos'] = combination_pos
+		stats_df[f'mtm_returns'] = (stats_df['mtm'] - stats_df['mtm'].shift(1)) / abs(stats_df['mtm'].shift(1))
+		stats_df[f'mtm_returns'].replace([np.inf, -np.inf], np.nan, inplace=True)
+		stats_df[f'mtm_returns'].fillna(0, inplace=True)
+
+		metrics = self.__calc_metrics(np.array(combination_mtm_max_capital_based), trading_days)
+		# mtm_returns_cumprod = (stats_df[f'mtm_returns'] + 1).cumprod()
+		# test_metrics_cumprod = self.__calc_metrics(mtm_returns_cumprod.to_numpy(), trading_days)
 
 		return stats_df, metrics
+
+	def __combine_results(self, comb_stats_tups: list[tuple[tuple[str, str], pandas.DataFrame]]):
+
+		individual_dfs = []
+		for combination, stats_df in comb_stats_tups:
+			if combination not in self.__stats_by_comb:
+				self.__stats_by_comb[combination] = stats_df
+			else:
+				old_stats_df = self.__stats_by_comb[combination]
+				self.__stats_by_comb[combination] = pd.concat([old_stats_df, stats_df], axis=0)
+
+			individual_dfs.append(stats_df['mtm_returns'])
+
+		iteration_portfolio_df = pd.concat(individual_dfs, axis=1)
+
+		# We assume equal capital allocations across all combinations
+		iteration_portfolio_df['portfolio_returns'] = iteration_portfolio_df.mean(axis=1)
+		iteration_portfolio_df['active_combinations'] = len(individual_dfs)
+
+		if self.__portfolio_df is None:
+			self.__portfolio_df = iteration_portfolio_df[['portfolio_returns', 'active_combinations']]
+		else:
+			self.__portfolio_df = pd.concat([self.__portfolio_df, iteration_portfolio_df[['portfolio_returns', 'active_combinations']]], axis=0)
+
+	def __save_plot(self, pair0: str, pair1: str, stats_df: pd.DataFrame, metrics: dict, plot_path: str, save_file_name: str):
+		nrows = 1
+		if 'pos' in stats_df.columns: nrows += 1
+		if 'active_combinations' in stats_df.columns: nrows += 1
+
+		fig, ax = plt.subplots(nrows, ncols=1, figsize=(35, 25))
+		row_ax = 0
+		ax[row_ax].plot(stats_df.index, stats_df['cumprod_mtm_returns'], 'm-')
+		ax[row_ax].set_xlabel('Date')
+		ax[row_ax].set_ylabel('Cumulative returns', color='m')
+		ax[row_ax].set_title(f'{pair0}-{pair1}. Sharpe={metrics["sharpe"]:.4f} Annualized return={metrics["annualized_net_return"]:.4f}')
+
+		if 'spread' in stats_df.columns:
+			twin_ax0 = ax[row_ax].twinx()
+			twin_ax0.plot(stats_df.index, stats_df['spread'], 'b-')
+
+		if 'pos' in stats_df.columns:
+			row_ax += 1
+			ax[row_ax].plot(stats_df.index, stats_df['pos'], 'b-')
+			ax[row_ax].set_xlabel('Date')
+			ax[row_ax].set_ylabel('Position', color='b')
+
+		if 'active_combinations' in stats_df.columns:
+			row_ax += 1
+			ax[row_ax].plot(stats_df.index, stats_df['active_combinations'], 'b-')
+			ax[row_ax].set_xlabel('Date')
+			ax[row_ax].set_ylabel('Active combinations', color='b')
+
+		fig.savefig(os.path.join(plot_path, f'{save_file_name}.png'), dpi=300)
+		plt.close()
+
+	def __save_all_resulting_metrics(self):
+		all_combined_values = []
+		now = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
+		main_path = f'results/{now}_{self.__backtest_id}'
+		plot_path = f'{main_path}/plots'
+		equity_path = f'{main_path}/equity'
+		os.makedirs(main_path, exist_ok=True)
+		os.makedirs(plot_path, exist_ok=True)
+		os.makedirs(equity_path, exist_ok=True)
+
+		for combination, stats_df in self.__stats_by_comb.items():
+			pair0 = combination[0]
+			pair1 = combination[1]
+
+			stats_df['cumprod_mtm_returns'] = (stats_df[f'mtm_returns'] + 1).cumprod()
+			trading_days = (stats_df.index[-1] - stats_df.index[0]).days
+			metrics = self.__calc_metrics(stats_df['cumprod_mtm_returns'].to_numpy(), trading_days)
+
+			save_file_name = f'{pair0}_{pair1}'
+
+			stats_df[['cumprod_mtm_returns', 'pos']].to_csv(os.path.join(equity_path, f'{save_file_name}.csv'), index=True, index_label='date')
+
+			self.__save_plot(pair0, pair1, stats_df, metrics, plot_path, save_file_name)
+
+		if self.__portfolio_df is not None and len(self.__portfolio_df) > 0:
+			self.__portfolio_df['cumprod_mtm_returns'] = (self.__portfolio_df['portfolio_returns'] + 1).cumprod()
+			trading_days = (self.__portfolio_df.index[-1] - self.__portfolio_df.index[0]).days
+			portfolio_metrics = self.__calc_metrics(self.__portfolio_df['cumprod_mtm_returns'].to_numpy(), trading_days)
+			self.__save_plot('portfolio', 'portfolio', self.__portfolio_df, portfolio_metrics, plot_path, 'portfolio_plot')
 
 	def Run(self):
 
@@ -313,7 +419,12 @@ class Backtester:
 			good_combinations = SearchForGoodCombinations(all_train, self.__all_possible_combinations, self.__comovement_type, self.__n_jobs)
 			data_tuples = self.__prepare_all_combination_datas(good_combinations, all_train, all_test)
 
+			comb_stats_tups = []
 			for comb_train_set, comb_test_set, combination, coint_vector in data_tuples:
 				preds = Train(comb_train_set, comb_test_set, combination, self.__val_window_days)
 				stats_df, metrics = self.__trading_logic(combination, comb_test_set, preds, coint_vector)
-# TODO: Run individual combinations, combine results into portfolio returns
+
+				comb_stats_tups.append((combination, stats_df))
+				self.__combine_results(comb_stats_tups)
+
+		self.__save_all_resulting_metrics()
