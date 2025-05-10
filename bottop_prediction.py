@@ -137,7 +137,7 @@ def save_clf_results(combination: tuple[str, str], y_train: pd.Series, y_test: p
 	report = classification_report(y_test, y_pred)
 	logging.info(f"Classification report:\n{report}")
 
-	save_pr_plot(combination, y_train, y_test, y_probs)
+	# save_pr_plot(combination, y_train, y_test, y_probs)
 
 
 def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], val_window_days: int):
