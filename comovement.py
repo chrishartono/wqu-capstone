@@ -57,11 +57,16 @@ def test_granger_causality(prices_df: pd.DataFrame, combination: tuple[str, str]
 	diffs = prices_df.diff(1).dropna()
 	gc_res = grangercausalitytests(diffs, maxlag=10)
 
-	gc_pvalues = [v[1] for v in gc_res.values()]
-	granger_caused = np.any([pvalue < significance_level for pvalue in gc_pvalues])
+	suitable_lags = []
+	for lag in gc_res.values():
+		tests = lag[0]
+		pvalues = [tup[1] for tup in tests.values()]
+		suitable_lags.append(np.any([pvalue  < significance_level for pvalue in pvalues]))
+
+	granger_caused = np.any(suitable_lags)
 
 	if not granger_caused:
-		logging.info(f'{combination[1]} does NOT cause {combination[0]}. gc_pvalues for lags: {gc_pvalues}')
+		logging.info(f'{combination[1]} does NOT cause {combination[0]}')
 		return False, combination, coint_vector
 
 	return True, combination, coint_vector

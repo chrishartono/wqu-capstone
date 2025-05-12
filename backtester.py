@@ -94,7 +94,7 @@ class Backtester:
 
 		return date_bounds
 
-	def __prepare_combination_data(self, train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], coint_vector: PhillipsOuliarisTestResults):
+	def prepare_combination_data(self, train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], coint_vector: PhillipsOuliarisTestResults):
 		train = AddCointCoefSpread(train, combination, coint_vector)
 		test = AddCointCoefSpread(test, combination, coint_vector)
 
@@ -114,8 +114,6 @@ class Backtester:
 
 		return train, test, combination, coint_vector
 
-	# TODO: Build targets, train top and bottom models, predict, trade
-
 	def __prepare_all_combination_datas(self,
 										good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]],
 										train: pd.DataFrame,
@@ -132,7 +130,7 @@ class Backtester:
 			params.append((train[comb_columns], test[comb_columns], comb, coint_vector))
 
 		results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
-				   (delayed(self.__prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc="Train data preparations:")))
+				   (delayed(self.prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc="Train data preparations:")))
 
 		logging.info(f'Finally got {len(results)} data tuples')
 
