@@ -95,22 +95,25 @@ class Backtester:
 		return date_bounds
 
 	def prepare_combination_data(self, train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], coint_vector: PhillipsOuliarisTestResults):
-		train = AddCointCoefSpread(train, combination, coint_vector)
-		test = AddCointCoefSpread(test, combination, coint_vector)
+		try:
+			train = AddCointCoefSpread(train, combination, coint_vector)
+			test = AddCointCoefSpread(test, combination, coint_vector)
 
-		train, test = AddFeatures(train, test, combination, self.__features_rolling_window_days)
-		data = pd.concat([train, test], axis=0)
+			train, test = AddFeatures(train, test, combination, self.__features_rolling_window_days)
+			data = pd.concat([train, test], axis=0)
 
-		window_rows = DaysWindowToPeriods(data, self.__target_rolling_window_days)
-		data = AddPeakNeighboursSingleColumn(data,
-											 combination,
-											 target_col='spread',
-											 period=window_rows,
-											 resulting_target_column='TARGET',
-											 numNeighbours=self.__num_target_neighbors)
+			window_rows = DaysWindowToPeriods(data, self.__target_rolling_window_days)
+			data = AddPeakNeighboursSingleColumn(data,
+												 combination,
+												 target_col='spread',
+												 period=window_rows,
+												 resulting_target_column='TARGET',
+												 numNeighbours=self.__num_target_neighbors)
 
-		train = data.iloc[:len(train)]
-		test = data.iloc[len(train):]
+			train = data.iloc[:len(train)]
+			test = data.iloc[len(train):]
+		except:
+			return None, None, combination, coint_vector
 
 		return train, test, combination, coint_vector
 
@@ -132,6 +135,7 @@ class Backtester:
 		results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
 				   (delayed(self.prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc="Train data preparations:")))
 
+		results = [tup for tup in results if tup[0] is not None and tup[1] is not None]
 		logging.info(f'Finally got {len(results)} data tuples')
 
 		return results
@@ -182,8 +186,8 @@ class Backtester:
 		mean_mtm_return = np.mean(mtm_returns)
 		std_mtm_return = np.std(mtm_returns)
 		semi_std_mtm_return = SemiStd(mtm_returns)
-		sharpe = (mean_mtm_return - self.__risk_free_rate) / std_mtm_return * self.__annualized_multiplier
-		sortino = (mean_mtm_return - self.__risk_free_rate) / semi_std_mtm_return * self.__annualized_multiplier
+		sharpe = (mean_mtm_return - self.__risk_free_rate) / std_mtm_return * self.__annualized_multiplier if std_mtm_return != 0 else 0
+		sortino = (mean_mtm_return - self.__risk_free_rate) / semi_std_mtm_return * self.__annualized_multiplier if semi_std_mtm_return != 0 else 0
 
 		# accumulate max value and subtract actual value. doing this we get the maximum fall
 		runningDD = np.maximum.accumulate(mtm) - mtm
@@ -303,8 +307,16 @@ class Backtester:
 		combination_mtm_0based = [t[0] + t[1] for t in zip(*pair_mtm)]
 		capital_usage = [abs(t[0]) + abs(t[1]) for t in zip(*pair_cash_pos)]
 		max_capital_usage = max(capital_usage)
+
+		# If we made no trades, max_capital_usage=0. But combination_mtm_max_capital_based list will also contain only zeros then.
+		# And in the end we will have issues with calculating metrics
+		max_capital_usage = max(max_capital_usage, 0.01)
 		combination_mtm_max_capital_based = [mtm + max_capital_usage for mtm in combination_mtm_0based]
 
+		# hasbad = np.any([(np.isnan(mtm) or mtm==0) for mtm in combination_mtm_max_capital_based])
+		# if hasbad:
+		# 	logging.error(f'CAUTION!!! {combination}. coint_vector={coint_vector} max_capital_usage={max_capital_usage}')
+		# 	exit(1)
 		# shifted_last_idx_value = test.index[-1] + timedelta(seconds=10)
 		# new_idx_value_as_list = DatetimeIndex([shifted_last_idx_value], dtype='datetime64[ns]', freq=None)
 		# updated_index = test.index.append(new_idx_value_as_list)
@@ -423,6 +435,7 @@ class Backtester:
 				stats_df, metrics = self.__trading_logic(combination, comb_test_set, preds, coint_vector)
 
 				comb_stats_tups.append((combination, stats_df))
-				self.__combine_results(comb_stats_tups)
+
+			self.__combine_results(comb_stats_tups)
 
 		self.__save_all_resulting_metrics()

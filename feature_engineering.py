@@ -40,7 +40,11 @@ def add_rolling_hurst(data: pd.DataFrame, window_periods: int):
 
 	for col in hurst_columns:
 		data[f'{col}_shifted'] = data[col] + abs(data[col].min()) + 1
-		data[f'{col}_hurst'] = data[f'{col}_shifted'].rolling(window=window_periods).apply(lambda x: compute_Hc(x, kind='price', simplified=True)[0], raw=True)
+		try:
+			data[f'{col}_hurst'] = data[f'{col}_shifted'].rolling(window=window_periods).apply(lambda x: compute_Hc(x, kind='price', simplified=True)[0], raw=True)
+		except:
+			data[f'{col}_hurst'] = 0.5
+
 		data.drop([f'{col}_shifted'], axis=1, inplace=True)
 
 	return data
