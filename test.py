@@ -50,17 +50,18 @@ def manual_test(prices_df: pd.DataFrame):
 
 def backtest_test(prices_df: pd.DataFrame):
 	all_possible_combinations = CreateAllPossibleCombinations(prices_df)
-	np.random.shuffle(all_possible_combinations)
+	# np.random.shuffle(all_possible_combinations)
 
-	# all_possible_combinations_slice = all_possible_combinations[:3]
+	# all_possible_combinations_slice = all_possible_combinations[:100]
 	# all_possible_combinations_slice = [('close_icp-usdt', 'close_woo-usdt')]
 	trade_window_days = 30
 	# train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
-	train_window_days = 180
+	train_window_days = 270
 	backtester = Backtester(prices_df=prices_df,
 							train_window_days=train_window_days,
-							val_window_days=trade_window_days,
+							ml_val_window_days=trade_window_days,
 							trade_window_days=trade_window_days,
+							val_test_split_coef=0.5,
 							features_rolling_window_days=10,
 							target_rolling_window_days=10,
 							all_possible_combinations=all_possible_combinations,
@@ -70,7 +71,9 @@ def backtest_test(prices_df: pd.DataFrame):
 							combination_limit=1000,
 							trade_limit=1000,
 							risk_free_rate=0,
-							fees=0.1/100)
+							fees=0.1 / 100,
+							min_val_net_return=0.1,
+							min_val_num_trades=trade_window_days)
 	backtester.Run()
 
 if __name__ == '__main__':

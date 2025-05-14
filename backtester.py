@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 from pandas import DatetimeIndex
 from tqdm import tqdm
 
-from bottop_prediction import Train
+from bottop_prediction import Predict, Train
 from combinations import SearchForGoodCombinations
 from comovement import ComovementType
 from feature_engineering import AddFeatures
@@ -28,8 +28,9 @@ class Backtester:
 	def __init__(self,
 				 prices_df: pd.DataFrame,
 				 train_window_days: int,
-				 val_window_days: int,
+				 ml_val_window_days: int,
 				 trade_window_days: int,
+				 val_test_split_coef: float,
 				 features_rolling_window_days: int,
 				 target_rolling_window_days: int,
 				 all_possible_combinations: list[tuple[str, str]],
@@ -39,23 +40,27 @@ class Backtester:
 				 combination_limit: float,
 				 trade_limit: float,
 				 risk_free_rate: float,
-				 fees: float):
+				 fees: float,
+				 min_val_net_return: float,
+				 min_val_num_trades: int):
 
 		self.__backtest_id = str(uuid.uuid4())
 		self.__prices_df = prices_df
 		self.__train_window_days = train_window_days
-		self.__val_window_days = val_window_days
+		self.__ml_val_window_days = ml_val_window_days
 		self.__features_rolling_window_days = features_rolling_window_days
 		self.__target_rolling_window_days = target_rolling_window_days
 		self.__all_possible_combinations = all_possible_combinations
 		self.__comovement_type = comovement_detection_type
 		self.__num_target_neighbors = num_target_neighbors
-		self.__date_bounds = self.__make_date_bounds(prices_df, train_window_days, trade_window_days)
+		self.__date_bounds = self.__make_date_bounds(prices_df, train_window_days, trade_window_days, val_test_split_coef)
 		self.__n_jobs = -1 if use_parallelization else 1
 		self.__combination_limit = combination_limit
 		self.__trade_limit = trade_limit
 		self.__risk_free_rate = risk_free_rate
 		self.__fees = fees
+		self.__min_val_net_return = min_val_net_return
+		self.__min_val_num_trades = min_val_num_trades
 
 		self.__annualized_multiplier = np.sqrt(24 * 365)
 
@@ -63,7 +68,7 @@ class Backtester:
 		self.__stats_by_comb = {}
 
 	@staticmethod
-	def __make_date_bounds(prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int):
+	def __make_date_bounds_no_val(prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int):
 		"""
 		This function creates boundaries for data train/test slices for walkforward backtest in format (start_train_date, end_train_date, end_test_date)
 
@@ -94,13 +99,47 @@ class Backtester:
 
 		return date_bounds
 
-	def prepare_combination_data(self, train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], coint_vector: PhillipsOuliarisTestResults):
-		try:
-			train = AddCointCoefSpread(train, combination, coint_vector)
-			test = AddCointCoefSpread(test, combination, coint_vector)
+	def __make_date_bounds(self, prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int, val_test_split_coef: float):
+		"""
+		This function creates boundaries for data train/test slices for walkforward backtest in format (start_train_date, end_train_date, end_test_date)
 
-			train, test = AddFeatures(train, test, combination, self.__features_rolling_window_days)
-			data = pd.concat([train, test], axis=0)
+		:param prices_df: Pandas DataFrame with 2 columns (one for each time series).
+		:param train_window_days: Number of days for train set.
+		:param trade_window_days: Number of days for test set.
+		:param val_test_split_coef: Determines VAL set size to VAL+TEST combined set size
+		:return: List of tuples of datetime values for boundaries.
+		"""
+
+		last_date = prices_df.index[-1]
+		current_bound_date = prices_df.index[0] - timedelta(seconds=10)  # To make sure that the first row is included
+		val_test_days = trade_window_days / (1 - val_test_split_coef)
+
+		# Here we assume that wf_window_days >> val_test_days
+		train_window = timedelta(days=train_window_days)
+		trade_window = timedelta(days=trade_window_days)
+		val_test_delta = timedelta(days=val_test_days)
+		test_delta = trade_window
+
+		date_bounds = []
+		# Iterate until there is not enough data to have at least val_test_days for train and val_test_days for val and test
+		while current_bound_date + train_window - test_delta <= last_date:
+
+			if current_bound_date + train_window <= last_date:  # The whole wf_window fits before last_date
+				date_bounds.append((current_bound_date, current_bound_date + train_window - val_test_delta, current_bound_date + train_window - test_delta,
+									current_bound_date + train_window))
+			else:  # Only 2 val_test_days windows fit before last_date
+				date_bounds.append((
+						current_bound_date, current_bound_date + train_window - val_test_delta, current_bound_date + train_window - test_delta, last_date))
+				break
+
+			current_bound_date = current_bound_date + trade_window
+
+		return date_bounds
+
+	def prepare_combination_data(self, data: pd.DataFrame, combination: tuple[str, str], coint_vector: PhillipsOuliarisTestResults):
+		try:
+			data = AddCointCoefSpread(data, combination, coint_vector)
+			data = AddFeatures(data, combination, self.__features_rolling_window_days)
 
 			window_rows = DaysWindowToPeriods(data, self.__target_rolling_window_days)
 			data = AddPeakNeighboursSingleColumn(data,
@@ -109,33 +148,26 @@ class Backtester:
 												 period=window_rows,
 												 resulting_target_column='TARGET',
 												 numNeighbours=self.__num_target_neighbors)
-
-			train = data.iloc[:len(train)]
-			test = data.iloc[len(train):]
 		except:
-			return None, None, combination, coint_vector
+			return None, combination, coint_vector
 
-		return train, test, combination, coint_vector
+		return data, combination, coint_vector
 
-	def __prepare_all_combination_datas(self,
-										good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]],
-										train: pd.DataFrame,
-										test: pd.DataFrame):
+	def __prepare_all_combination_datas(self, good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]], data: pd.DataFrame):
 		logging.info(f'Start features and target preparations for {len(good_combinations)} combinations on '
-					 f'train set from {train.index[0]} to {train.index[-1]} and '
-					 f'test set from {test.index[0]} to {test.index[-1]}')
+					 f'data set from {data.index[0]} to {data.index[-1]}')
 
 		params = []
 		for comb, coint_vector in good_combinations:
 			pair1 = comb[0].split('_')[1]
 			pair2 = comb[1].split('_')[1]
-			comb_columns = [col for col in train.columns if pair1 in col or pair2 in col]
-			params.append((train[comb_columns], test[comb_columns], comb, coint_vector))
+			comb_columns = [col for col in data.columns if pair1 in col or pair2 in col]
+			params.append((data[comb_columns], comb, coint_vector))
 
 		results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
 				   (delayed(self.prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc="Train data preparations:")))
 
-		results = [tup for tup in results if tup[0] is not None and tup[1] is not None]
+		results = [tup for tup in results if tup[0] is not None]
 		logging.info(f'Finally got {len(results)} data tuples')
 
 		return results
@@ -178,7 +210,9 @@ class Backtester:
 		pair_mtm[0].append(pair_cash_pos[0][-1])
 		pair_mtm[1].append(pair_cash_pos[1][-1])
 
-	def __calc_metrics(self, mtm: np.ndarray, trading_days: float):
+	def __calc_metrics(self, mtm: np.ndarray, trading_days: float, num_trades: int = None):
+		if num_trades is None: num_trades = 0
+
 		net_return = (mtm[-1] - mtm[0]) / mtm[0]
 		annualized_net_return = net_return / trading_days * 365
 
@@ -203,7 +237,8 @@ class Backtester:
 				   'sharpe'               : sharpe,
 				   'sortino'              : sortino,
 				   'maxDD'                : maxDD,
-				   'recoveryFactor'       : recoveryFactor}
+				   'recoveryFactor'       : recoveryFactor,
+				   'numTrades'            : num_trades}
 		return metrics
 
 	def __trading_logic(self, combination: tuple[str, str], test: pd.DataFrame, preds: np.ndarray, coint_vector: PhillipsOuliarisTestResults):
@@ -223,6 +258,7 @@ class Backtester:
 		pair_pos = [[], []]
 		pair_mtm = [[], []]
 		coef_history = [[], []]
+		signals = []
 
 		# Max number of trades we can open according to backtest settings: trade_limit and combination_limit
 		max_exposure = int(self.__combination_limit / self.__trade_limit)
@@ -241,6 +277,7 @@ class Backtester:
 			coef = [coef_orig[0], coef_orig[1]]
 
 			last_fees = [0, 0]
+			signals.append(prediction)
 
 			if prediction == SignalTypes.BUY.value:
 				if combination_exposure_trades + 1 <= max_exposure:
@@ -329,8 +366,10 @@ class Backtester:
 		stats_df[f'mtm_returns'] = (stats_df['mtm'] - stats_df['mtm'].shift(1)) / abs(stats_df['mtm'].shift(1))
 		stats_df[f'mtm_returns'].replace([np.inf, -np.inf], np.nan, inplace=True)
 		stats_df[f'mtm_returns'].fillna(0, inplace=True)
+		stats_df[f'signals'] = signals
 
-		metrics = self.__calc_metrics(np.array(combination_mtm_max_capital_based), trading_days)
+		num_trades = np.count_nonzero(np.array(signals))
+		metrics = self.__calc_metrics(np.array(combination_mtm_max_capital_based), trading_days, num_trades)
 		# mtm_returns_cumprod = (stats_df[f'mtm_returns'] + 1).cumprod()
 		# test_metrics_cumprod = self.__calc_metrics(mtm_returns_cumprod.to_numpy(), trading_days)
 
@@ -420,21 +459,52 @@ class Backtester:
 			portfolio_metrics = self.__calc_metrics(self.__portfolio_df['cumprod_mtm_returns'].to_numpy(), trading_days)
 			self.__save_plot('portfolio', 'portfolio', self.__portfolio_df, portfolio_metrics, plot_path, 'portfolio_plot')
 
+	def __get_val_metrics(self, data_tuples, start_date: datetime, end_train_date: datetime, end_val_date: datetime, end_test_date: datetime):
+		val_comb_metrics_tups = []
+		for comb_data, combination, coint_vector in data_tuples:
+			comb_train = comb_data[(comb_data.index > start_date) & (comb_data.index <= end_train_date)]
+			comb_val = comb_data[(comb_data.index > end_train_date) & (comb_data.index <= end_val_date)]
+			comb_test = comb_data[(comb_data.index > end_val_date) & (comb_data.index <= end_test_date)]
+
+			preds, model = Train(comb_train, comb_val, combination, self.__ml_val_window_days)
+			_, val_metrics = self.__trading_logic(combination, comb_val, preds, coint_vector)
+
+			val_comb_metrics_tups.append((combination, val_metrics, coint_vector, model, comb_test))
+
+		val_comb_metrics_tups.sort(key=lambda x: x[1]['annualized_net_return'], reverse=True)
+
+		return val_comb_metrics_tups
+
+	def __choose_best_combinations(self, val_comb_metrics_tups):
+		used_pairs = set()
+		combinations_to_trade = []
+		for tup in val_comb_metrics_tups:
+			combination, val_metrics, coint_vector, model, comb_test = tup
+			if combination[0] in used_pairs or combination[1] in used_pairs: continue
+			if val_metrics['annualized_net_return'] < self.__min_val_net_return: continue
+			if val_metrics['numTrades'] < self.__min_val_num_trades: continue
+
+			combinations_to_trade.append(tup)
+
+		return combinations_to_trade
+
 	def Run(self):
 
-		for start_date, end_train_date, end_test_date in self.__date_bounds:
+		for start_date, end_train_date, end_val_date, end_test_date in self.__date_bounds:
+			all_slice = self.__prices_df[(self.__prices_df.index > start_date) & (self.__prices_df.index <= end_test_date)]
 			all_train = self.__prices_df[(self.__prices_df.index > start_date) & (self.__prices_df.index <= end_train_date)]
-			all_test = self.__prices_df[(self.__prices_df.index > end_train_date) & (self.__prices_df.index <= end_test_date)]
 
 			good_combinations = SearchForGoodCombinations(all_train, self.__all_possible_combinations, self.__comovement_type, self.__n_jobs)
-			data_tuples = self.__prepare_all_combination_datas(good_combinations, all_train, all_test)
+			data_tuples = self.__prepare_all_combination_datas(good_combinations, all_slice)
+			val_comb_metrics_tups = self.__get_val_metrics(data_tuples, start_date, end_train_date, end_val_date, end_test_date)
+			combinations_to_trade = self.__choose_best_combinations(val_comb_metrics_tups)
 
 			comb_stats_tups = []
-			for comb_train_set, comb_test_set, combination, coint_vector in data_tuples:
-				preds = Train(comb_train_set, comb_test_set, combination, self.__val_window_days)
-				stats_df, metrics = self.__trading_logic(combination, comb_test_set, preds, coint_vector)
-
+			for combination, val_metrics, coint_vector, model, comb_test in combinations_to_trade:
+				preds = Predict(comb_test, model, combination)
+				stats_df, test_metrics = self.__trading_logic(combination, comb_test, preds, coint_vector)
 				comb_stats_tups.append((combination, stats_df))
+
 
 			self.__combine_results(comb_stats_tups)
 

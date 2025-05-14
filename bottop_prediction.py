@@ -170,4 +170,12 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 
 	# save_clf_results(combination, y_train, y_test, y_probs, y_pred)
 
+	return y_pred, clf
+
+def Predict(data: pd.DataFrame, model, combination: tuple[str, str]):
+	logging.info(f'Start bottom model training for {combination}')
+	X = data.drop(columns=['TARGET'])
+	y_pred = model.predict(X)
+
 	return y_pred
+
