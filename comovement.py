@@ -8,6 +8,8 @@ from arch.unitroot._phillips_ouliaris import PhillipsOuliarisTestResults
 from arch.unitroot.cointegration import phillips_ouliaris
 from statsmodels.tsa.stattools import grangercausalitytests
 
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 class ComovementType(IntEnum):
 	COINTEGRATION = 0
@@ -23,7 +25,11 @@ def test_cointegration(prices_df: pd.DataFrame, combination: tuple[str, str], si
 	:param significance_level: Significance level against which we check our p_value.
 	:return: Tuple of Boolean flag indicating cointegration and combination tuple (for using with parallelization).
 	"""
-	result = phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Zt")
+	try:
+		result = phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Zt")
+	except:
+		return False, combination, None
+
 	coint_vector = result.cointegrating_vector
 
 	# po_pvalues = [phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Zt").pvalue,
@@ -55,13 +61,21 @@ def test_granger_causality(prices_df: pd.DataFrame, combination: tuple[str, str]
 		return False, combination, coint_vector
 
 	diffs = prices_df.diff(1).dropna()
-	gc_res = grangercausalitytests(diffs, maxlag=10)
+	try:
+		gc_res = grangercausalitytests(diffs, maxlag=10, verbose=False)
+	except:
+		return False, combination, coint_vector
 
-	gc_pvalues = [v[1] for v in gc_res.values()]
-	granger_caused = np.any([pvalue < significance_level for pvalue in gc_pvalues])
+	suitable_lags = []
+	for lag in gc_res.values():
+		tests = lag[0]
+		pvalues = [tup[1] for tup in tests.values()]
+		suitable_lags.append(np.any([pvalue  < significance_level for pvalue in pvalues]))
+
+	granger_caused = np.any(suitable_lags)
 
 	if not granger_caused:
-		logging.info(f'{combination[1]} does NOT cause {combination[0]}. gc_pvalues for lags: {gc_pvalues}')
+		logging.info(f'{combination[1]} does NOT cause {combination[0]}')
 		return False, combination, coint_vector
 
 	return True, combination, coint_vector

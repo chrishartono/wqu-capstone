@@ -21,6 +21,7 @@ def CreateAllPossibleCombinations(prices_df: pd.DataFrame):
 		combs_set.add((c0, c1))
 		combs_set.add((c1, c0))
 		pair_combinations.append((c0, c1))
+		pair_combinations.append((c1, c0))
 
 	logging.info(f'Created total number of combinations: {len(pair_combinations)}')
 	return pair_combinations
@@ -36,7 +37,15 @@ def SearchForGoodCombinations(prices_df: pd.DataFrame, all_possible_combinations
 														   for p in tqdm(params, total=len(params), desc="Combinations search:")))
 	# results = (Parallel(n_jobs=n_jobs, prefer="processes")(delayed(TestCombinationComovement)(*p) for p in params))
 
-	good_combinations = [(comb, coint_vector) for isGood, comb, coint_vector in results if isGood]
+	all_good_combinations = [(comb, coint_vector) for isGood, comb, coint_vector in results if isGood and coint_vector is not None]
+	good_combinations = []
+	# used_pairs = set()
+	for comb, coint_vector in all_good_combinations:
+		# if comb[0] not in used_pairs and comb[1] not in used_pairs:
+		good_combinations.append((comb, coint_vector))
+
+		# used_pairs.add(comb[0])
+		# used_pairs.add(comb[1])
 
 	logging.info(f'Finally got {len(good_combinations)} good combinations for prices slice from {prices_df.index[0]} to {prices_df.index[-1]}')
 
