@@ -175,6 +175,7 @@ cython_debug/
 
 # Other
 data_local/
+notebook_local/
 .idea/
 # *.csv
 # *.zip
