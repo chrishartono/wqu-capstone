@@ -23,7 +23,7 @@ from matplotlib import pyplot as plt
 from pandas import DatetimeIndex
 from tqdm import tqdm
 
-from bottop_prediction import Predict, Train
+from bottop_prediction import Predict, Train, TopModelType
 from combinations import SearchForGoodCombinations
 from comovement import ComovementType
 from feature_engineering import AddFeatures
@@ -52,7 +52,8 @@ class Backtester:
 				 risk_free_rate: float,
 				 fees: float,
 				 min_val_net_return: float,
-				 min_val_num_trades: int):
+				 min_val_num_trades: int,
+				 use_top_model: TopModelType):
 
 		self.__backtest_id = str(uuid.uuid4())
 		self.__prices_df = prices_df
@@ -76,6 +77,8 @@ class Backtester:
 
 		self.__portfolio_df = None
 		self.__stats_by_comb = {}
+
+		self.__use_top_model = use_top_model
 
 	@staticmethod
 	def __make_date_bounds_no_val(prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int):
@@ -503,7 +506,7 @@ class Backtester:
 			preds, model = Train(comb_train, comb_val, combination, self.__ml_val_window_days)
 			_, val_metrics = self.__trading_logic(combination, comb_val, preds, coint_vector)
 
-			val_comb_metrics_tups.append((combination, val_metrics, coint_vector, model, comb_test))
+			val_comb_metrics_tups.append((combination, val_metrics, coint_vector, model, comb_test, comb_val))
 
 		val_comb_metrics_tups.sort(key=lambda x: x[1]['annualized_net_return'], reverse=True)
 
@@ -513,7 +516,7 @@ class Backtester:
 		used_pairs = set()
 		combinations_to_trade = []
 		for tup in val_comb_metrics_tups:
-			combination, val_metrics, coint_vector, model, comb_test = tup
+			combination, val_metrics, coint_vector, model, comb_test, _ = tup
 			if combination[0] in used_pairs or combination[1] in used_pairs: continue
 			if val_metrics['annualized_net_return'] < self.__min_val_net_return: continue
 			if val_metrics['numTrades'] < self.__min_val_num_trades: continue
@@ -543,12 +546,11 @@ class Backtester:
 			data_tuples = self.__prepare_all_combination_datas(good_combinations, all_slice)
 			val_comb_metrics_tups = self.__get_val_metrics(data_tuples, start_date, end_train_date, end_val_date, end_test_date)
 			combinations_to_trade = self.__choose_best_combinations(val_comb_metrics_tups)
-
 			tr.print_diff()
 
 			comb_stats_tups = []
-			for combination, val_metrics, coint_vector, model, comb_test in combinations_to_trade:
-				preds = Predict(comb_test, model, combination)
+			for combination, val_metrics, coint_vector, model, comb_test, comb_val in combinations_to_trade:
+				preds = Predict(comb_test, comb_val, model, combination, self.__use_top_model)
 				stats_df, test_metrics = self.__trading_logic(combination, comb_test, preds, coint_vector)
 				comb_stats_tups.append((combination, stats_df))
 
