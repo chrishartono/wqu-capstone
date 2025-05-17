@@ -170,6 +170,8 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 
 	# save_clf_results(combination, y_train, y_test, y_probs, y_pred)
 
+	del val, train, X_train, X_val, X_test, y_train, y_val, y_test, y_probs
+
 	return y_pred, clf
 
 def Predict(data: pd.DataFrame, model, combination: tuple[str, str]):

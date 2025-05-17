@@ -1,3 +1,4 @@
+import gc
 import logging
 from enum import IntEnum
 from unittest import result
@@ -40,8 +41,12 @@ def test_cointegration(prices_df: pd.DataFrame, combination: tuple[str, str], si
 	# 			  phillips_ouliaris(prices_df[combination[0]], prices_df[combination[1]], trend="ct", test_type="Pz").pvalue]
 	# cointegrated = np.all([pvalue < significance_level for pvalue in po_pvalues])
 	cointegrated = result.pvalue < significance_level
+	pvalue = result.pvalue
+
+	del result
+
 	if not cointegrated:
-		logging.info(f'{combination} is not cointegrated. pvalue: {result.pvalue}')
+		logging.info(f'{combination} is not cointegrated. pvalue: {pvalue}')
 		return False, combination, coint_vector
 
 	return True, combination, coint_vector
@@ -75,6 +80,8 @@ def test_granger_causality(prices_df: pd.DataFrame, combination: tuple[str, str]
 		pvalues = [tup[1] for tup in tests.values()]
 		suitable_lags.append(np.all([pvalue  < significance_level for pvalue in pvalues]))
 
+	del gc_res, diffs
+
 	granger_caused = np.any(suitable_lags)
 
 	if not granger_caused:
@@ -92,11 +99,13 @@ def test_mutual_information(prices_df: pd.DataFrame, combination: tuple[str, str
 		logging.error(e)
 		return False
 
-	return score > 0
+	del x, y
+
+	return score
 
 
 def TestCombinationComovement(prices_df: pd.DataFrame, combination: tuple[str, str], comovement_type: ComovementType, significance_level=0.05) -> \
-		tuple[bool, tuple[str, str], PhillipsOuliarisTestResults]:
+		tuple[bool, tuple[str, str], PhillipsOuliarisTestResults, float]:
 	"""
 	This function checks if time series 1 first differences are Granger Caused by time series 2 first differences.
 
@@ -106,15 +115,19 @@ def TestCombinationComovement(prices_df: pd.DataFrame, combination: tuple[str, s
 	:param significance_level: Significance level against which we check our p_value.
 	:return: Tuple of Boolean flag indicating Granger Causality and combination tuple (for using with parallelization).
 	"""
-
+	mi_score = 0
 	if comovement_type == ComovementType.COINTEGRATION:
 		return test_cointegration(prices_df, combination)
 	elif comovement_type == ComovementType.GRANGER_CAUSALITY:
 		return test_granger_causality(prices_df, combination)
 	elif comovement_type == ComovementType.GC_MI:
 		is_granger_caused, combination, coint_vector = test_granger_causality(prices_df, combination)
-		is_mutually_connected = test_mutual_information(prices_df, combination) if is_granger_caused else False
-		isGood = is_granger_caused and is_mutually_connected
-		return isGood, combination, coint_vector
+
+		if is_granger_caused:
+			mi_score = test_mutual_information(prices_df, combination) if is_granger_caused else False
+			if mi_score > 0:
+				return True, combination, coint_vector, mi_score
+
+		return False, combination, coint_vector, mi_score
 	else:
 		raise(f'Unknown comovement type: {comovement_type}')

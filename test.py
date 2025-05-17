@@ -79,7 +79,7 @@ def backtest_test(prices_df: pd.DataFrame):
 	# 								   ('close_badger-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_celo-usdt'), ('close_rei-usdt', 'close_ach-usdt')]
 	trade_window_days = 60
 	# train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
-	train_window_days = 360
+	train_window_days = 720
 	backtester = Backtester(prices_df=prices_df,
 							train_window_days=train_window_days,
 							ml_val_window_days=trade_window_days,
@@ -96,7 +96,8 @@ def backtest_test(prices_df: pd.DataFrame):
 							risk_free_rate=0,
 							fees=0.1 / 100,
 							min_val_net_return=0.1,
-							min_val_num_trades=trade_window_days)
+							min_val_num_trades=trade_window_days,
+							num_good_combs_to_choose=100)
 	backtester.Run()
 
 if __name__ == '__main__':
