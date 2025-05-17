@@ -47,7 +47,7 @@ class Backtester:
 				 fees: float,
 				 min_val_net_return: float,
 				 min_val_num_trades: int,
-				 num_good_combs_to_choose: int):
+				 num_good_combs_to_choose: int,
 				 use_top_model: TopModelType):
 
 		self.__backtest_id = str(uuid.uuid4())

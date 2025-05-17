@@ -98,7 +98,7 @@ def backtest_test(prices_df: pd.DataFrame):
 							fees=0.1 / 100,
 							min_val_net_return=0.1,
 							min_val_num_trades=trade_window_days,
-							num_good_combs_to_choose=100)
+							num_good_combs_to_choose=100,
 							use_top_model=None) # TopModelType.ARIMA is ready to use
 	backtester.Run()
 
