@@ -1,5 +1,9 @@
 import logging
+import warnings
+warnings.filterwarnings("ignore")
 from itertools import cycle
+from tqdm import tqdm
+from enum import IntEnum
 
 import numpy as np
 import pandas as pd
@@ -8,10 +12,60 @@ from matplotlib import pyplot as plt
 from sklearn.metrics import PrecisionRecallDisplay, average_precision_score, classification_report, precision_recall_curve, roc_auc_score, roc_curve, auc
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.utils import compute_class_weight
+from statsmodels.tsa.arima.model import ARIMA
 
 from utils.helpers import DaysWindowToPeriods, LogValueCounts
 
 catboost_hyperparameters = {'depth' : 3, 'iterations': 1000, 'loss_function': 'MultiClass', 'learning_rate': 0.1}
+
+class TopModelType(IntEnum):
+	HMM = 0
+	ARIMA = 1
+
+class TopModelArima:
+	def __init__(
+			self, 
+			pre_data: pd.DataFrame, 
+			window: int=24):
+
+		self.__window = window
+		self.__pre_data = pre_data
+
+		self.__std_history = self.backfill_std_history(pre_data, window)
+
+	def backfill_std_history(self, pre_data: pd.DataFrame, window: int):
+		history = []
+
+		for i in tqdm( range(window, len(pre_data)), desc='backfilling ARIMA std history' ):
+			model_ = ARIMA(pre_data.iloc[i-window:i]['spread'], order=(1, 0, 1))
+			res = model_.fit()
+			std = np.std(res.resid)
+			history.append(std)
+
+		return history
+	
+	def predict(self, data: pd.DataFrame):
+		pred = []
+
+		for i in tqdm( range(len(data)), desc='generating ARIMA residual analysis' ):
+			if i < self.__window:
+				x = pd.concat([
+					self.__pre_data.iloc[-self.__window+i:], 
+					data.iloc[:i]
+				], axis=0)['spread']
+			else:
+				x = data.iloc[i - self.__window:i]['spread']
+
+			model_ = ARIMA(x, order=(1, 0, 1))
+			res = model_.fit()
+			std = np.std(res.resid)
+
+			threshold = np.quantile(self.__std_history, q=0.9)
+			pred.append(1 if std > threshold else 0)
+
+			self.__std_history.append(std)
+
+		return pred
 
 def calc_multiclass_macro_auc(y_train: pd.Series, y_test: pd.Series, y_probs: np.ndarray):
 
@@ -174,10 +228,23 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 
 	return y_pred, clf
 
-def Predict(data: pd.DataFrame, model, combination: tuple[str, str]):
+def Predict(data: pd.DataFrame, 
+			data_val: pd.DataFrame, 
+			model, combination: tuple[str, str],
+			use_top_model: TopModelType):
 	logging.info(f'Start bottom model training for {combination}')
 	X = data.drop(columns=['TARGET'])
 	y_pred = model.predict(X)
+
+	if use_top_model == TopModelType.ARIMA:
+		top_model_arima = TopModelArima(pre_data=data_val, window=24)
+		y_pred_top_model = top_model_arima.predict(data)
+		
+		y_pred_filtered = y_pred.reshape(-1) * np.array(y_pred_top_model)
+		y_pred = y_pred_filtered.reshape(-1, 1)
+	elif use_top_model == TopModelType.HMM:
+		# TODO
+		pass
 
 	return y_pred
 
