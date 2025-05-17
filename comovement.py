@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from arch.unitroot._phillips_ouliaris import PhillipsOuliarisTestResults
 from arch.unitroot.cointegration import phillips_ouliaris
+from sklearn.feature_selection import mutual_info_regression
 from statsmodels.tsa.stattools import grangercausalitytests
 
 import warnings
@@ -14,6 +15,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 class ComovementType(IntEnum):
 	COINTEGRATION = 0
 	GRANGER_CAUSALITY = 1
+	GC_MI = 2
 
 def test_cointegration(prices_df: pd.DataFrame, combination: tuple[str, str], significance_level=0.05) -> \
 		tuple[bool, tuple[str, str], PhillipsOuliarisTestResults]:
@@ -44,6 +46,7 @@ def test_cointegration(prices_df: pd.DataFrame, combination: tuple[str, str], si
 
 	return True, combination, coint_vector
 
+
 def test_granger_causality(prices_df: pd.DataFrame, combination: tuple[str, str], significance_level=0.05) -> \
 		tuple[bool, tuple[str, str], PhillipsOuliarisTestResults]:
 	"""
@@ -70,7 +73,7 @@ def test_granger_causality(prices_df: pd.DataFrame, combination: tuple[str, str]
 	for lag in gc_res.values():
 		tests = lag[0]
 		pvalues = [tup[1] for tup in tests.values()]
-		suitable_lags.append(np.any([pvalue  < significance_level for pvalue in pvalues]))
+		suitable_lags.append(np.all([pvalue  < significance_level for pvalue in pvalues]))
 
 	granger_caused = np.any(suitable_lags)
 
@@ -79,6 +82,18 @@ def test_granger_causality(prices_df: pd.DataFrame, combination: tuple[str, str]
 		return False, combination, coint_vector
 
 	return True, combination, coint_vector
+
+def test_mutual_information(prices_df: pd.DataFrame, combination: tuple[str, str]):
+	x = prices_df[combination[0]].to_numpy().reshape(-1, 1)
+	y = prices_df[combination[1]].to_numpy()
+	try:
+		score = mutual_info_regression(x, y)[0]
+	except Exception as e:
+		logging.error(e)
+		return False
+
+	return score > 0
+
 
 def TestCombinationComovement(prices_df: pd.DataFrame, combination: tuple[str, str], comovement_type: ComovementType, significance_level=0.05) -> \
 		tuple[bool, tuple[str, str], PhillipsOuliarisTestResults]:
@@ -96,5 +111,10 @@ def TestCombinationComovement(prices_df: pd.DataFrame, combination: tuple[str, s
 		return test_cointegration(prices_df, combination)
 	elif comovement_type == ComovementType.GRANGER_CAUSALITY:
 		return test_granger_causality(prices_df, combination)
+	elif comovement_type == ComovementType.GC_MI:
+		is_granger_caused, combination, coint_vector = test_granger_causality(prices_df, combination)
+		is_mutually_connected = test_mutual_information(prices_df, combination) if is_granger_caused else False
+		isGood = is_granger_caused and is_mutually_connected
+		return isGood, combination, coint_vector
 	else:
 		raise(f'Unknown comovement type: {comovement_type}')

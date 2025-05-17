@@ -58,14 +58,15 @@ def clean(df: pd.DataFrame):
 	return df
 
 def AddFeatures(data: pd.DataFrame, combination: tuple[str, str], rolling_window_days: int) -> pd.DataFrame:
+	# logging.info(f'Start adding features for {combination}')
 
-	logging.info(f'Start adding features for {combination}')
+	data = data.copy()
 
 	window_periods = DaysWindowToPeriods(data, rolling_window_days)
 
 	data = add_basic_features(data, combination)
 	data = add_zscores(data, window_periods)
-	data = add_rolling_hurst(data, window_periods)
+	# data = add_rolling_hurst(data, window_periods)
 
 	data = clean(data)
 

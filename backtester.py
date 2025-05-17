@@ -1,4 +1,6 @@
+import gc
 import logging
+import multiprocessing
 import os
 import uuid
 from datetime import datetime, timedelta
@@ -8,7 +10,15 @@ import numpy as np
 import pandas
 import pandas as pd
 from arch.unitroot._phillips_ouliaris import PhillipsOuliarisTestResults
+
+import joblib.externals.loky
+from joblib.externals.loky import get_reusable_executor
+
+joblib.externals.loky.process_executor._MAX_MEMORY_LEAK_SIZE = int(3e12)
 from joblib import Parallel, delayed
+
+from pympler import tracker
+
 from matplotlib import pyplot as plt
 from pandas import DatetimeIndex
 from tqdm import tqdm
@@ -138,9 +148,13 @@ class Backtester:
 
 	def prepare_combination_data(self, data: pd.DataFrame, combination: tuple[str, str], coint_vector: PhillipsOuliarisTestResults):
 		try:
+			# logging.info(f'Start adding spread for {combination}')
 			data = AddCointCoefSpread(data, combination, coint_vector)
+
+			# logging.info(f'Start adding features for {combination}')
 			data = AddFeatures(data, combination, self.__features_rolling_window_days)
 
+			# logging.info(f'Start adding target for {combination}')
 			window_rows = DaysWindowToPeriods(data, self.__target_rolling_window_days)
 			data = AddPeakNeighboursSingleColumn(data,
 												 combination,
@@ -148,9 +162,14 @@ class Backtester:
 												 period=window_rows,
 												 resulting_target_column='TARGET',
 												 numNeighbours=self.__num_target_neighbors)
+			logging.info(f'Finished data creation for {combination}')
 		except:
+			logging.exception(f'Error adding features for {combination}')
+			del data
+			gc.collect()
 			return None, combination, coint_vector
 
+		gc.collect()
 		return data, combination, coint_vector
 
 	def __prepare_all_combination_datas(self, good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]], data: pd.DataFrame):
@@ -164,13 +183,28 @@ class Backtester:
 			comb_columns = [col for col in data.columns if pair1 in col or pair2 in col]
 			params.append((data[comb_columns], comb, coint_vector))
 
-		results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
-				   (delayed(self.prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc="Train data preparations:")))
+		# all_results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
+		# 			   (delayed(self.prepare_combination_data)(*p) for p in
+		# 				tqdm(params, total=len(params), desc=f"Train data preparations:")))
 
-		results = [tup for tup in results if tup[0] is not None]
-		logging.info(f'Finally got {len(results)} data tuples')
+		batch_size = multiprocessing.cpu_count() - 5
+		all_results = []
 
-		return results
+		for batch_num, i in enumerate(range(0, len(params), batch_size)):
+			batch_params = params[i:i + batch_size]
+
+			results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
+					   (delayed(self.prepare_combination_data)(*p) for p in
+						tqdm(batch_params, total=len(batch_params), desc=f"Batch {batch_num}. Train data preparations:")))
+
+			results = [tup for tup in results if tup is not None and tup[0] is not None]
+			logging.info(f'Got {len(results)} data tuples for batch {batch_num}')
+
+			all_results.extend(results)
+
+		logging.info('Waiting for loky workers to shutdown')
+		get_reusable_executor().shutdown(wait=True)
+		return all_results
 
 	def __update_stats(self, prices, combination_pos, pair_cash_pos, pair_pos, pair_mtm, combination_exposure_trades, last_pair_cash_pos, last_pair_pos, coef,
 					   i, last_fees):
@@ -490,14 +524,27 @@ class Backtester:
 
 	def Run(self):
 
+		tr = tracker.SummaryTracker()
+
+		# snapshot1 = tracemalloc.take_snapshot()
+
+		i = 0
+		# stable_combs = set(self.__all_possible_combinations)
 		for start_date, end_train_date, end_val_date, end_test_date in self.__date_bounds:
 			all_slice = self.__prices_df[(self.__prices_df.index > start_date) & (self.__prices_df.index <= end_test_date)]
 			all_train = self.__prices_df[(self.__prices_df.index > start_date) & (self.__prices_df.index <= end_train_date)]
 
 			good_combinations = SearchForGoodCombinations(all_train, self.__all_possible_combinations, self.__comovement_type, self.__n_jobs)
+			# iteration_combs = [tup[0] for tup in good_combinations]
+			# stable_combs = stable_combs & set(iteration_combs)
+			# logging.info(f'{start_date}:\n{stable_combs}')
+			# continue
+
 			data_tuples = self.__prepare_all_combination_datas(good_combinations, all_slice)
 			val_comb_metrics_tups = self.__get_val_metrics(data_tuples, start_date, end_train_date, end_val_date, end_test_date)
 			combinations_to_trade = self.__choose_best_combinations(val_comb_metrics_tups)
+
+			tr.print_diff()
 
 			comb_stats_tups = []
 			for combination, val_metrics, coint_vector, model, comb_test in combinations_to_trade:
@@ -505,7 +552,7 @@ class Backtester:
 				stats_df, test_metrics = self.__trading_logic(combination, comb_test, preds, coint_vector)
 				comb_stats_tups.append((combination, stats_df))
 
-
-			self.__combine_results(comb_stats_tups)
+			if comb_stats_tups:
+				self.__combine_results(comb_stats_tups)
 
 		self.__save_all_resulting_metrics()

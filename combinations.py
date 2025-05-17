@@ -5,6 +5,7 @@ import pandas as pd
 from arch.unitroot._phillips_ouliaris import PhillipsOuliarisTestResults
 from joblib import Parallel, delayed
 from tqdm import tqdm
+from joblib.externals.loky import get_reusable_executor
 
 from comovement import ComovementType, TestCombinationComovement
 
@@ -36,6 +37,9 @@ def SearchForGoodCombinations(prices_df: pd.DataFrame, all_possible_combinations
 	results = (Parallel(n_jobs=n_jobs, prefer="processes")(delayed(TestCombinationComovement)(*p)
 														   for p in tqdm(params, total=len(params), desc="Combinations search:")))
 	# results = (Parallel(n_jobs=n_jobs, prefer="processes")(delayed(TestCombinationComovement)(*p) for p in params))
+
+	logging.info('Waiting for loky workers to shutdown')
+	get_reusable_executor().shutdown(wait=True)
 
 	all_good_combinations = [(comb, coint_vector) for isGood, comb, coint_vector in results if isGood and coint_vector is not None]
 	good_combinations = []

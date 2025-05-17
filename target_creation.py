@@ -24,7 +24,7 @@ def AddPeakNeighboursSingleColumn(feats_df: pd.DataFrame,
 								  target_col: str, period: int,
 								  resulting_target_column: str,
 								  numNeighbours: int) -> pd.DataFrame:
-	logging.info(f'Start target creation for {combination}')
+	# logging.info(f'Start target creation for {combination}')
 
 	results = feats_df.reset_index(drop=True)
 
