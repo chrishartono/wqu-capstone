@@ -12,7 +12,8 @@ from combinations import CreateAllPossibleCombinations
 from comovement import ComovementType, test_cointegration
 from feature_engineering import AddFeatures
 from spread import AddPolyfitSpread
-from target_creation import AddPeakNeighboursSingleColumn
+from target_creation import AddPeakNeighboursTarget, TargetType
+
 
 def parallel_logging(name):
 	logger = logging.getLogger()
@@ -78,9 +79,11 @@ def backtest_test(prices_df: pd.DataFrame):
 	# all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt'), ('close_troy-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_clv-usdt'),
 	# 								   ('close_rei-usdt', 'close_algo-usdt'), ('close_voxel-usdt', 'close_algo-usdt'), ('close_amp-usdt', 'close_bico-usdt'),
 	# 								   ('close_badger-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_celo-usdt'), ('close_rei-usdt', 'close_ach-usdt')]
-	trade_window_days = 60
+	trade_window_days = 30
 	# train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
-	train_window_days = 720
+	train_window_days = 360
+	# target_params = {'numNeighbours': 10, 'rolling_window_days': 10}
+	target_params = {'look_ahead_days': 5, 'reg_points_thresh_frac': 0.95}
 	backtester = Backtester(prices_df=prices_df,
 							train_window_days=train_window_days,
 							ml_val_window_days=trade_window_days,
@@ -90,7 +93,6 @@ def backtest_test(prices_df: pd.DataFrame):
 							target_rolling_window_days=10,
 							all_possible_combinations=all_possible_combinations,
 							comovement_detection_type=ComovementType.GC_MI,
-							num_target_neighbors=10,
 							use_parallelization=True,
 							combination_limit=1000,
 							trade_limit=1000,
@@ -99,7 +101,9 @@ def backtest_test(prices_df: pd.DataFrame):
 							min_val_net_return=0.1,
 							min_val_num_trades=trade_window_days,
 							num_good_combs_to_choose=100,
-							use_top_model=None) # TopModelType.ARIMA is ready to use
+							use_top_model=None, # TopModelType.ARIMA is ready to use
+							target_type=TargetType.OLS_CLF,
+							target_params=target_params)
 	backtester.Run()
 
 if __name__ == '__main__':

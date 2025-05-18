@@ -22,7 +22,7 @@ from combinations import SearchForGoodCombinations
 from comovement import ComovementType
 from feature_engineering import AddFeatures
 from spread import AddCointCoefSpread
-from target_creation import AddPeakNeighboursSingleColumn
+from target_creation import AddClassificationOLSTarget, AddPeakNeighboursTarget, TargetType
 from utils.data_structures import SignalTypes
 from utils.helpers import DaysWindowToPeriods, SemiStd
 
@@ -39,7 +39,6 @@ class Backtester:
 				 target_rolling_window_days: int,
 				 all_possible_combinations: list[tuple[str, str]],
 				 comovement_detection_type: ComovementType,
-				 num_target_neighbors: int,
 				 use_parallelization: bool,
 				 combination_limit: float,
 				 trade_limit: float,
@@ -48,7 +47,9 @@ class Backtester:
 				 min_val_net_return: float,
 				 min_val_num_trades: int,
 				 num_good_combs_to_choose: int,
-				 use_top_model: TopModelType):
+				 use_top_model: TopModelType,
+				 target_type: TargetType,
+				 target_params: dict):
 
 		self.__backtest_id = str(uuid.uuid4())
 		self.__prices_df = prices_df
@@ -58,7 +59,6 @@ class Backtester:
 		self.__target_rolling_window_days = target_rolling_window_days
 		self.__all_possible_combinations = all_possible_combinations
 		self.__comovement_type = comovement_detection_type
-		self.__num_target_neighbors = num_target_neighbors
 		self.__date_bounds = self.__make_date_bounds(prices_df, train_window_days, trade_window_days, val_test_split_coef)
 		self.__n_jobs = -1 if use_parallelization else 1
 		self.__combination_limit = combination_limit
@@ -68,6 +68,16 @@ class Backtester:
 		self.__min_val_net_return = min_val_net_return
 		self.__min_val_num_trades = min_val_num_trades
 		self.__num_good_combs_to_choose = num_good_combs_to_choose
+
+		self.__target_type = target_type
+		self.__target_params = target_params
+		if target_type == TargetType.PEAK_NEIGHBOURS_CLF:
+			self.__AddTargetFunc = AddPeakNeighboursTarget
+		elif target_type == TargetType.OLS_CLF:
+			self.__AddTargetFunc = AddClassificationOLSTarget
+		else:
+			raise Exception(f'Unknown target type: {target_type}')
+
 
 		self.__annualized_multiplier = np.sqrt(24 * 365)
 
@@ -154,13 +164,8 @@ class Backtester:
 			data = AddFeatures(data, combination, self.__features_rolling_window_days)
 
 			# logging.info(f'Start adding target for {combination}')
-			window_rows = DaysWindowToPeriods(data, self.__target_rolling_window_days)
-			data = AddPeakNeighboursSingleColumn(data,
-												 combination,
-												 target_col='spread',
-												 period=window_rows,
-												 resulting_target_column='TARGET',
-												 numNeighbours=self.__num_target_neighbors)
+			data = self.__AddTargetFunc(data, combination, target_col='spread', resulting_target_column='TARGET', target_params=self.__target_params)
+
 			logging.info(f'Finished data creation for {combination}')
 		except:
 			logging.exception(f'Error adding features for {combination}')

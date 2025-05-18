@@ -73,7 +73,7 @@ def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_wi
 
 	data = add_basic_features(data, combination)
 	data = add_zscores(data, window_periods)
-	# data = add_rolling_hurst(data, window_periods)
+	data = add_rolling_hurst(data, window_periods)
 
 	data = clean(data)
 
