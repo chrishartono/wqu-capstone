@@ -35,7 +35,7 @@ class Backtester:
 				 ml_val_window_days: int,
 				 trade_window_days: int,
 				 val_test_split_coef: float,
-				 features_rolling_window_days: int,
+				 features_rolling_windows_days_list: list[int],
 				 target_rolling_window_days: int,
 				 all_possible_combinations: list[tuple[str, str]],
 				 comovement_detection_type: ComovementType,
@@ -55,7 +55,7 @@ class Backtester:
 		self.__prices_df = prices_df
 		self.__train_window_days = train_window_days
 		self.__ml_val_window_days = ml_val_window_days
-		self.__features_rolling_window_days = features_rolling_window_days
+		self.__features_rolling_windows_days_list = features_rolling_windows_days_list
 		self.__target_rolling_window_days = target_rolling_window_days
 		self.__all_possible_combinations = all_possible_combinations
 		self.__comovement_type = comovement_detection_type
@@ -155,13 +155,13 @@ class Backtester:
 
 		return date_bounds
 
-	def prepare_combination_data(self, data: pd.DataFrame, combination: tuple[str, str], coint_vector: PhillipsOuliarisTestResults):
+	def prepare_combination_data(self, data: pd.DataFrame, combination: tuple[str, str], coint_vector: PhillipsOuliarisTestResults, end_train_date: datetime):
 		try:
 			# logging.info(f'Start adding spread for {combination}')
 			data = AddCointCoefSpread(data, combination, coint_vector)
 
 			# logging.info(f'Start adding features for {combination}')
-			data = AddFeatures(data, combination, self.__features_rolling_window_days)
+			data = AddFeatures(data, combination, self.__features_rolling_windows_days_list, end_train_date)
 
 			# logging.info(f'Start adding target for {combination}')
 			data = self.__AddTargetFunc(data, combination, target_col='spread', resulting_target_column='TARGET', target_params=self.__target_params)
@@ -176,7 +176,9 @@ class Backtester:
 		gc.collect()
 		return data, combination, coint_vector
 
-	def __prepare_all_combination_datas(self, good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]], data: pd.DataFrame):
+	def __prepare_all_combination_datas(self, good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]],
+										data: pd.DataFrame,
+										end_train_date: datetime):
 		logging.info(f'Start features and target preparations for {len(good_combinations)} combinations on '
 					 f'data set from {data.index[0]} to {data.index[-1]}')
 
@@ -185,7 +187,7 @@ class Backtester:
 			pair1 = comb[0].split('_')[1]
 			pair2 = comb[1].split('_')[1]
 			comb_columns = [col for col in data.columns if pair1 in col or pair2 in col]
-			params.append((data[comb_columns], comb, coint_vector))
+			params.append((data[comb_columns], comb, coint_vector, end_train_date))
 
 		all_results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
 					   (delayed(self.prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc=f"Train data preparations:")))
@@ -547,7 +549,7 @@ class Backtester:
 														  self.__n_jobs,
 														  self.__num_good_combs_to_choose)
 
-			data_tuples = self.__prepare_all_combination_datas(good_combinations, all_slice)
+			data_tuples = self.__prepare_all_combination_datas(good_combinations, all_slice, end_train_date)
 			val_comb_metrics_tups = self.__get_val_metrics(data_tuples, start_date, end_train_date, end_val_date, end_test_date)
 			combinations_to_trade = self.__choose_best_combinations(val_comb_metrics_tups)
 			comb_stats_tups = []

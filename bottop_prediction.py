@@ -1,4 +1,5 @@
 import logging
+import sys
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -17,7 +18,7 @@ from statsmodels.tsa.arima.model import ARIMA
 
 from utils.helpers import DaysWindowToPeriods, LogValueCounts
 
-catboost_hyperparameters = {'depth': 3, 'iterations': 1000, 'loss_function': 'MultiClass', 'learning_rate': 0.1}
+catboost_hyperparameters = {'depth': 4, 'iterations': 1000, 'loss_function': 'MultiClass', 'learning_rate': 0.1}
 
 
 class TopModelType(IntEnum):
@@ -132,7 +133,7 @@ def save_roc_plot(combination: tuple[str, str], y_train: pd.Series, y_test: pd.S
 			linewidth=4)
 	_ = ax.set(xlabel="False Positive Rate", ylabel="True Positive Rate", title=f"{combination} Macro-average ROC curve")
 	ax.legend()
-	fig.savefig(f'auc.png', dpi=300)
+	fig.savefig(f'auc.png')
 	plt.show()
 
 
@@ -186,21 +187,22 @@ def save_pr_plot(combination: tuple[str, str], y_train: pd.Series, y_test: pd.Se
 	ax.set_title(f"{combination} Precision-Recall curves")
 	ax.set_ylim([0, 1.2])
 	ax.legend(loc="best")
-	fig.savefig(f'pr-re.png', dpi=300)
+	fig.savefig(f'pr-re.png')
 	plt.show()
 
 
 def save_feature_importance(combination: tuple[str, str], clf: CatBoostClassifier, columns: list[str]):
 	feature_importance = clf.feature_importances_
-	sorted_idx = np.argsort(feature_importance)
+	sorted_idx = np.argsort(feature_importance)[-30:]
 
 	fig = plt.figure(figsize=(12, 6))
 	plt.barh(range(len(sorted_idx)), feature_importance[sorted_idx], align='center')
 	plt.yticks(range(len(sorted_idx)), np.array(columns)[sorted_idx])
 	plt.title(f'{combination} Feature Importance')
-	fig.savefig(f'feature_importances.png', dpi=300)
+	plt.tight_layout()
+	fig.savefig(f'feature_importances.png')
+
 	plt.show()
-	pass
 
 def save_clf_results(combination: tuple[str, str],
 					 clf: CatBoostClassifier,
@@ -221,16 +223,16 @@ def save_clf_results(combination: tuple[str, str],
 def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], val_window_days: int):
 	logging.info(f'Start bottom model training for {combination}')
 
-	val_window_periods = DaysWindowToPeriods(train, val_window_days)
+	# val_window_periods = DaysWindowToPeriods(train, val_window_days)
 
-	val = train.iloc[-val_window_periods:]
-	train = train.iloc[:len(train) - val_window_periods]
+	# val = train.iloc[-val_window_periods:]
+	# train = train.iloc[:len(train) - val_window_periods]
 
 	X_train = train.drop(columns=['TARGET'])
-	X_val = val.drop(columns=['TARGET'])
+	# X_val = val.drop(columns=['TARGET'])
 	X_test = test.drop(columns=['TARGET'])
 	y_train = train['TARGET']
-	y_val = val['TARGET']
+	# y_val = val['TARGET']
 	y_test = test['TARGET']
 
 	# classes = np.unique(y_train)
@@ -241,7 +243,8 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 
 	# clf = CatBoostClassifier(verbose=0, class_weights=class_weights, **catboost_hyperparameters)
 	clf = CatBoostClassifier(verbose=0, **catboost_hyperparameters)
-	clf.fit(X=X_train, y=y_train, eval_set=(X_val, y_val), early_stopping_rounds=20)
+	# clf.fit(X=X_train, y=y_train, eval_set=(X_val, y_val), early_stopping_rounds=20)
+	clf.fit(X=X_train, y=y_train)
 
 	logging.info(f'Making predictions for {len(X_test)} rows')
 	y_probs = clf.predict_proba(X_test)
@@ -249,7 +252,8 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 
 	# save_clf_results(combination, clf, list(X_train.columns), y_train, y_test, y_probs, y_pred)
 
-	del val, train, X_train, X_val, X_test, y_train, y_val, y_test, y_probs
+	del train, X_train, X_test, y_train, y_test, y_probs
+	# del val, train, X_train, X_val, X_test, y_train, y_val, y_test, y_probs
 
 	return y_pred, clf
 
