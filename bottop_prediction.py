@@ -1,5 +1,10 @@
 import logging
+import warnings
+
+warnings.filterwarnings("ignore")
 from itertools import cycle
+from tqdm import tqdm
+from enum import IntEnum
 
 import numpy as np
 import pandas as pd
@@ -8,13 +13,65 @@ from matplotlib import pyplot as plt
 from sklearn.metrics import PrecisionRecallDisplay, average_precision_score, classification_report, precision_recall_curve, roc_auc_score, roc_curve, auc
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.utils import compute_class_weight
+from statsmodels.tsa.arima.model import ARIMA
 
 from utils.helpers import DaysWindowToPeriods, LogValueCounts
 
-catboost_hyperparameters = {'depth' : 3, 'iterations': 1000, 'loss_function': 'MultiClass', 'learning_rate': 0.1}
+catboost_hyperparameters = {'depth': 3, 'iterations': 1000, 'loss_function': 'MultiClass', 'learning_rate': 0.1}
+
+
+class TopModelType(IntEnum):
+	HMM = 0
+	ARIMA = 1
+
+
+class TopModelArima:
+	def __init__(
+			self,
+			pre_data: pd.DataFrame,
+			window: int = 24):
+
+		self.__window = window
+		self.__pre_data = pre_data
+
+		self.__std_history = self.backfill_std_history(pre_data, window)
+
+	def backfill_std_history(self, pre_data: pd.DataFrame, window: int):
+		history = []
+
+		for i in tqdm(range(window, len(pre_data)), desc='backfilling ARIMA std history'):
+			model_ = ARIMA(pre_data.iloc[i - window:i]['spread'], order=(1, 0, 1))
+			res = model_.fit()
+			std = np.std(res.resid)
+			history.append(std)
+
+		return history
+
+	def predict(self, data: pd.DataFrame):
+		pred = []
+
+		for i in tqdm(range(len(data)), desc='generating ARIMA residual analysis'):
+			if i < self.__window:
+				x = pd.concat([
+						self.__pre_data.iloc[-self.__window + i:],
+						data.iloc[:i]
+						], axis=0)['spread']
+			else:
+				x = data.iloc[i - self.__window:i]['spread']
+
+			model_ = ARIMA(x, order=(1, 0, 1))
+			res = model_.fit()
+			std = np.std(res.resid)
+
+			threshold = np.quantile(self.__std_history, q=0.9)
+			pred.append(1 if std > threshold else 0)
+
+			self.__std_history.append(std)
+
+		return pred
+
 
 def calc_multiclass_macro_auc(y_train: pd.Series, y_test: pd.Series, y_probs: np.ndarray):
-
 	label_binarizer = LabelBinarizer().fit(y_train)
 	y_onehot_test = label_binarizer.transform(y_test)
 
@@ -41,6 +98,7 @@ def calc_multiclass_macro_auc(y_train: pd.Series, y_test: pd.Series, y_probs: np
 	tpr = mean_tpr
 
 	return fpr, tpr, fpr_list, tpr_list
+
 
 def save_roc_plot(combination: tuple[str, str], y_train: pd.Series, y_test: pd.Series, y_probs: np.ndarray):
 	macro_roc_auc_ovr = roc_auc_score(y_test, y_probs, multi_class="ovr", average="macro")
@@ -76,6 +134,7 @@ def save_roc_plot(combination: tuple[str, str], y_train: pd.Series, y_test: pd.S
 	ax.legend()
 	fig.savefig(f'auc.png', dpi=300)
 	plt.show()
+
 
 def save_pr_plot(combination: tuple[str, str], y_train: pd.Series, y_test: pd.Series, y_probs: np.ndarray):
 	label_binarizer = LabelBinarizer().fit(y_train)
@@ -116,7 +175,7 @@ def save_pr_plot(combination: tuple[str, str], y_train: pd.Series, y_test: pd.Se
 
 	for i in range(n_classes):
 		display = PrecisionRecallDisplay(recall=recall[i], precision=precision[i], average_precision=average_precision[i])
-		display.plot( ax=ax, name=f"Precision-recall for class {i}")
+		display.plot(ax=ax, name=f"Precision-recall for class {i}")
 
 	# add the legend for the iso-f1 curves
 	# handles, labels = display.ax_.get_legend_handles_labels()
@@ -130,7 +189,26 @@ def save_pr_plot(combination: tuple[str, str], y_train: pd.Series, y_test: pd.Se
 	fig.savefig(f'pr-re.png', dpi=300)
 	plt.show()
 
-def save_clf_results(combination: tuple[str, str], y_train: pd.Series, y_test: pd.Series, y_probs: np.ndarray, y_pred: np.ndarray):
+
+def save_feature_importance(combination: tuple[str, str], clf: CatBoostClassifier, columns: list[str]):
+	feature_importance = clf.feature_importances_
+	sorted_idx = np.argsort(feature_importance)
+
+	fig = plt.figure(figsize=(12, 6))
+	plt.barh(range(len(sorted_idx)), feature_importance[sorted_idx], align='center')
+	plt.yticks(range(len(sorted_idx)), np.array(columns)[sorted_idx])
+	plt.title(f'{combination} Feature Importance')
+	fig.savefig(f'feature_importances.png', dpi=300)
+	plt.show()
+	pass
+
+def save_clf_results(combination: tuple[str, str],
+					 clf: CatBoostClassifier,
+					 columns: list[str],
+					 y_train: pd.Series,
+					 y_test: pd.Series,
+					 y_probs: np.ndarray,
+					 y_pred: np.ndarray):
 
 	LogValueCounts(y_test.unique(), y_test.value_counts(sort=False).values, 'Test', len(y_test))
 
@@ -138,7 +216,7 @@ def save_clf_results(combination: tuple[str, str], y_train: pd.Series, y_test: p
 	logging.info(f"Classification report:\n{report}")
 
 	save_pr_plot(combination, y_train, y_test, y_probs)
-
+	save_feature_importance(combination, clf, columns)
 
 def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], val_window_days: int):
 	logging.info(f'Start bottom model training for {combination}')
@@ -155,27 +233,43 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 	y_val = val['TARGET']
 	y_test = test['TARGET']
 
-	classes = np.unique(y_train)
-	weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train)
-	class_weights = dict(zip(classes, weights))
+	# classes = np.unique(y_train)
+	# weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train)
+	# class_weights = dict(zip(classes, weights))
 
 	LogValueCounts(y_train.unique(), y_train.value_counts(sort=False).values, 'Train', len(y_train))
 
-	clf = CatBoostClassifier(verbose=0, class_weights=class_weights, **catboost_hyperparameters)
+	# clf = CatBoostClassifier(verbose=0, class_weights=class_weights, **catboost_hyperparameters)
+	clf = CatBoostClassifier(verbose=0, **catboost_hyperparameters)
 	clf.fit(X=X_train, y=y_train, eval_set=(X_val, y_val), early_stopping_rounds=20)
 
 	logging.info(f'Making predictions for {len(X_test)} rows')
 	y_probs = clf.predict_proba(X_test)
 	y_pred = clf.predict(X_test)
 
-	# save_clf_results(combination, y_train, y_test, y_probs, y_pred)
+	# save_clf_results(combination, clf, list(X_train.columns), y_train, y_test, y_probs, y_pred)
+
+	del val, train, X_train, X_val, X_test, y_train, y_val, y_test, y_probs
 
 	return y_pred, clf
 
-def Predict(data: pd.DataFrame, model, combination: tuple[str, str]):
+
+def Predict(data: pd.DataFrame,
+			data_val: pd.DataFrame,
+			model, combination: tuple[str, str],
+			use_top_model: TopModelType):
 	logging.info(f'Start bottom model training for {combination}')
 	X = data.drop(columns=['TARGET'])
 	y_pred = model.predict(X)
 
-	return y_pred
+	if use_top_model == TopModelType.ARIMA:
+		top_model_arima = TopModelArima(pre_data=data_val, window=24)
+		y_pred_top_model = top_model_arima.predict(data)
 
+		y_pred_filtered = y_pred.reshape(-1) * np.array(y_pred_top_model)
+		y_pred = y_pred_filtered.reshape(-1, 1)
+	elif use_top_model == TopModelType.HMM:
+		# TODO
+		pass
+
+	return y_pred

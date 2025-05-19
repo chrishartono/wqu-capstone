@@ -8,9 +8,10 @@ from hurst import compute_Hc
 from utils.helpers import DaysWindowToPeriods
 
 
-def add_basic_features(df: pd.DataFrame, combination: tuple[str, str]):
+def add_basic_features(feats_df: pd.DataFrame, combination: tuple[str, str]):
 	columns_for_returns = ['close', 'volume', 'close-open', 'high-low']
 
+	df = feats_df.copy()
 	pairs = set([c.split('_')[1] for c in combination])
 
 	for pair in pairs:
@@ -27,7 +28,9 @@ def add_basic_features(df: pd.DataFrame, combination: tuple[str, str]):
 
 	return df
 
-def add_zscores(data: pd.DataFrame, window_periods: int):
+def add_zscores(feats_df: pd.DataFrame, window_periods: int):
+	data = feats_df.copy()
+
 	for col in data.columns:
 		mean = data[col].rolling(window=window_periods).mean()
 		std = data[col].rolling(window=window_periods).std()
@@ -35,8 +38,10 @@ def add_zscores(data: pd.DataFrame, window_periods: int):
 
 	return data
 
-def add_rolling_hurst(data: pd.DataFrame, window_periods: int):
+def add_rolling_hurst(feats_df: pd.DataFrame, window_periods: int):
 	hurst_columns = ['spread']
+
+	data = feats_df.copy()
 
 	for col in hurst_columns:
 		data[f'{col}_shifted'] = data[col] + abs(data[col].min()) + 1
@@ -49,7 +54,9 @@ def add_rolling_hurst(data: pd.DataFrame, window_periods: int):
 
 	return data
 
-def clean(df: pd.DataFrame):
+def clean(feats_df: pd.DataFrame):
+	df = feats_df.copy()
+
 	df.replace([np.inf, -np.inf], np.nan, inplace=True)
 	df.ffill(inplace=True)
 
@@ -57,9 +64,10 @@ def clean(df: pd.DataFrame):
 
 	return df
 
-def AddFeatures(data: pd.DataFrame, combination: tuple[str, str], rolling_window_days: int) -> pd.DataFrame:
+def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_window_days: int) -> pd.DataFrame:
+	# logging.info(f'Start adding features for {combination}')
 
-	logging.info(f'Start adding features for {combination}')
+	data = feats_df.copy()
 
 	window_periods = DaysWindowToPeriods(data, rolling_window_days)
 

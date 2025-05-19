@@ -184,3 +184,4 @@ notebook_local/
 *.csv
 catboost_info/
 *.png
+*.orig
