@@ -133,7 +133,7 @@ def AddClassificationOLSTarget(feats_df: pd.DataFrame,
 	# ax.set_title(f'{combination} spread with points chosen as targets')
 	# ax.legend()
 	# plt.tight_layout()
-	# fig.savefig(f'{combination}_target.png', dpi=300)
+	# fig.savefig(f'{combination}_target.png')
 	# plt.show()
 
 	return feats_target_df

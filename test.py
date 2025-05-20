@@ -75,7 +75,7 @@ def backtest_test(prices_df: pd.DataFrame):
 	# np.random.shuffle(all_possible_combinations)
 
 	# all_possible_combinations_slice = all_possible_combinations[:1000]
-	# all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt')]
+	all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt')]
 	# all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt'), ('close_troy-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_clv-usdt'),
 	# 								   ('close_rei-usdt', 'close_algo-usdt'), ('close_voxel-usdt', 'close_algo-usdt'), ('close_amp-usdt', 'close_bico-usdt'),
 	# 								   ('close_badger-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_celo-usdt'), ('close_rei-usdt', 'close_ach-usdt')]
@@ -89,7 +89,7 @@ def backtest_test(prices_df: pd.DataFrame):
 							ml_val_window_days=trade_window_days,
 							trade_window_days=trade_window_days,
 							val_test_split_coef=0.5,
-							features_rolling_window_days=10,
+							features_rolling_windows_days_list=[1, 5, 10],
 							target_rolling_window_days=10,
 							all_possible_combinations=all_possible_combinations,
 							comovement_detection_type=ComovementType.GC_MI,
