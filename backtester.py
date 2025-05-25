@@ -52,6 +52,8 @@ class Backtester:
 				 target_params: dict):
 
 		self.__backtest_id = str(uuid.uuid4())
+		logging.info(f'Backtest_id={self.__backtest_id}')
+
 		self.__prices_df = prices_df
 		self.__train_window_days = train_window_days
 		self.__ml_val_window_days = ml_val_window_days
@@ -217,16 +219,16 @@ class Backtester:
 
 		return all_results
 
-	def __update_stats(self, prices, combination_pos, pair_cash_pos, pair_pos, pair_mtm, combination_exposure_trades, last_pair_cash_pos, last_pair_pos, coef,
-					   i, last_fees):
+	def __update_stats(self, prices, combination_pos, pair_cash_pos, pair_pos, pair_mtm, combination_exposure_trades, last_pair_cash_pos, last_pair_pos,
+					   coef, i):
 		combination_pos.append(combination_exposure_trades)
 		pair_cash_pos[0].append(last_pair_cash_pos[0])
 		pair_cash_pos[1].append(last_pair_cash_pos[1])
 		pair_pos[0].append(last_pair_pos[0])
 		pair_pos[1].append(last_pair_pos[1])
 		# Sign is already in last_pair_pos, so coef is taken as abs
-		pair_mtm[0].append(last_pair_cash_pos[0] + last_pair_pos[0] * prices[0][i] * abs(coef[0]) - last_fees[0])
-		pair_mtm[1].append(last_pair_cash_pos[1] + last_pair_pos[1] * prices[1][i] * abs(coef[1]) - last_fees[1])
+		pair_mtm[0].append(last_pair_cash_pos[0] + last_pair_pos[0] * prices[0][i] * abs(coef[0]))
+		pair_mtm[1].append(last_pair_cash_pos[1] + last_pair_pos[1] * prices[1][i] * abs(coef[1]))
 
 	def __finalize_backtest(self,
 							prices,
@@ -348,6 +350,9 @@ class Backtester:
 					last_pair_pos = [last_pair_pos[0] - np.sign(coef[0]), last_pair_pos[1] - np.sign(coef[1])]
 					last_fees = [abs(prices[0][i] * coef[0] * self.__fees), abs(prices[1][i] * coef[1] * self.__fees)]
 
+			# Adding fees directly to cash_flow so they can accumulate
+			last_pair_cash_pos = [last_pair_cash_pos[0] - last_fees[0], last_pair_cash_pos[1] - last_fees[1]]
+
 			coef_history[0].append(coef[0])
 			coef_history[1].append(coef[1])
 			# Add all last values to the lists of running statistics.
@@ -360,8 +365,7 @@ class Backtester:
 								last_pair_cash_pos,
 								last_pair_pos,
 								coef,
-								i,
-								last_fees)
+								i)
 
 		# self.__finalize_backtest(prices,
 		# 						 combination_pos,
@@ -475,7 +479,7 @@ class Backtester:
 			ax[row_ax].set_xlabel('Date')
 			ax[row_ax].set_ylabel('Active combinations', color='b')
 
-		fig.savefig(os.path.join(plot_path, f'{save_file_name}.png'), dpi=300)
+		fig.savefig(os.path.join(plot_path, f'{save_file_name}.png'))
 		plt.close()
 
 	def __save_all_resulting_metrics(self):
@@ -540,8 +544,15 @@ class Backtester:
 
 	def Run(self):
 		for start_date, end_train_date, end_val_date, end_test_date in self.__date_bounds:
+			#
+			# start_date = '2023-10-18 00:00:00'
+			# end_train_date = '2024-08-12 00:00:00'
+			# end_val_date = '2024-09-11 00:00:00'
+			# end_test_date = '2024-10-11 23:00:00 '
+
 			all_slice = self.__prices_df[(self.__prices_df.index > start_date) & (self.__prices_df.index <= end_test_date)]
 			all_train = self.__prices_df[(self.__prices_df.index > start_date) & (self.__prices_df.index <= end_train_date)]
+
 
 			good_combinations = SearchForGoodCombinations(all_train,
 														  self.__all_possible_combinations,

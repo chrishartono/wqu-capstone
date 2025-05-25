@@ -75,7 +75,8 @@ def backtest_test(prices_df: pd.DataFrame):
 	# np.random.shuffle(all_possible_combinations)
 
 	# all_possible_combinations_slice = all_possible_combinations[:1000]
-	all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt')]
+	# all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt')]
+	all_possible_combinations_slice = [('close_btcdown-usdt', 'close_btcup-usdt')]
 	# all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt'), ('close_troy-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_clv-usdt'),
 	# 								   ('close_rei-usdt', 'close_algo-usdt'), ('close_voxel-usdt', 'close_algo-usdt'), ('close_amp-usdt', 'close_bico-usdt'),
 	# 								   ('close_badger-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_celo-usdt'), ('close_rei-usdt', 'close_ach-usdt')]

@@ -30,34 +30,38 @@ def add_basic_features(feats_df: pd.DataFrame, combination: tuple[str, str]):
 
 	return df
 
-def add_zscores(feats_df: pd.DataFrame, window_periods: int):
+def add_zscores(feats_df: pd.DataFrame, window_period: int):
 	data = feats_df.copy()
 
 	for col in data.columns:
-		mean = data[col].rolling(window=window_periods).mean()
-		std = data[col].rolling(window=window_periods).std()
-		data[f'{col}_zscore'] = (data[col] - mean) / std
+		zscore_colname = f'{col}_zscore_{window_period}'
+		zscore_extrem_colname = f'{col}_zscore_extrem_{window_period}'
 
-		data[f'{col}_10q'] = data[f'{col}_zscore'].rolling(window=window_periods).quantile(0.1)
-		data[f'{col}_90q'] = data[f'{col}_zscore'].rolling(window=window_periods).quantile(0.9)
-		data[f'{col}_zscore_extrem'] = 0
-		data.loc[data[f'{col}_zscore'] < data[f'{col}_10q'], f'{col}_zscore_extrem'] = -1
-		data.loc[data[f'{col}_zscore'] > data[f'{col}_90q'], f'{col}_zscore_extrem'] = 1
+		mean = data[col].rolling(window=window_period).mean()
+		std = data[col].rolling(window=window_period).std()
+		data[zscore_colname] = (data[col] - mean) / std
+
+		data[f'{col}_10q'] = data[zscore_colname].rolling(window=window_period).quantile(0.1)
+		data[f'{col}_90q'] = data[zscore_colname].rolling(window=window_period).quantile(0.9)
+		data[zscore_extrem_colname] = 0
+		data.loc[data[zscore_colname] < data[f'{col}_10q'], zscore_extrem_colname] = -1
+		data.loc[data[zscore_colname] > data[f'{col}_90q'], zscore_extrem_colname] = 1
 
 		data.drop([f'{col}_10q', f'{col}_90q'], axis=1, inplace=True)
 	return data
 
-def add_rolling_hurst(feats_df: pd.DataFrame, window_periods: int):
+def add_rolling_hurst(feats_df: pd.DataFrame, window_period: int):
 	hurst_columns = ['spread']
 
 	data = feats_df.copy()
 
 	for col in hurst_columns:
+		hurst_colname = f'{col}_hurst_{window_period}'
 		data[f'{col}_shifted'] = data[col] + abs(data[col].min()) + 1
 		try:
-			data[f'{col}_hurst'] = data[f'{col}_shifted'].rolling(window=window_periods).apply(lambda x: compute_Hc(x, kind='price', simplified=True)[0], raw=True)
+			data[hurst_colname] = data[f'{col}_shifted'].rolling(window=window_period).apply(lambda x: compute_Hc(x, kind='price', simplified=True)[0], raw=True)
 		except:
-			data[f'{col}_hurst'] = 0.5
+			data[hurst_colname] = 0.5
 
 		data.drop([f'{col}_shifted'], axis=1, inplace=True)
 
@@ -122,7 +126,7 @@ def clean(feats_df: pd.DataFrame):
 
 	df.replace([np.inf, -np.inf], np.nan, inplace=True)
 	df.ffill(inplace=True)
-	df.fillna(0)
+	df.fillna(0, inplace=True)
 
 	df.dropna(inplace=True)
 
