@@ -15,8 +15,10 @@ def AddCointCoefSpread(prices_df: pd.DataFrame, combination: tuple[str, str], co
 	c0 = combination[0]
 	c1 = combination[1]
 
-	prices_df['spread'] = prices_df[c0]*coint_vector[c0] + prices_df[c1]*coint_vector[c1]
-	return prices_df
+	data = prices_df.copy()
+	data['spread'] = prices_df[c0]*coint_vector[c0] + prices_df[c1]*coint_vector[c1]
+
+	return data
 
 def AddPolyfitSpread(prices_df: pd.DataFrame, combination: tuple[str, str], coefs: np.ndarray = None) -> tuple[pd.DataFrame, np.ndarray]:
 	"""
