@@ -365,12 +365,12 @@ class Backtester:
 					last_pair_pos = [last_pair_pos[0] - np.sign(coef[0]), last_pair_pos[1] - np.sign(coef[1])]
 					last_fees = [abs(prices[0][i] * coef[0] * self.__fees), abs(prices[1][i] * coef[1] * self.__fees)]
 
-			elif combination_exposure_trades != 0: # No signal, close position if it is open
-				last_pair_cash_pos = [last_pair_cash_pos[0] + prices[0][i] * last_pair_pos[0] * abs(coef[0]),
-									  last_pair_cash_pos[1] + prices[1][i] * last_pair_pos[1] * abs(coef[1])]
-				last_fees = [abs(prices[0][i] * last_pair_pos[0] * coef[0] * self.__fees), abs(prices[1][i] * last_pair_pos[1] * coef[1] * self.__fees)]
-				last_pair_pos = [0, 0]
-				combination_exposure_trades = 0
+			# elif combination_exposure_trades != 0: # No signal, close position if it is open
+			# 	last_pair_cash_pos = [last_pair_cash_pos[0] + prices[0][i] * last_pair_pos[0] * abs(coef[0]),
+			# 						  last_pair_cash_pos[1] + prices[1][i] * last_pair_pos[1] * abs(coef[1])]
+			# 	last_fees = [abs(prices[0][i] * last_pair_pos[0] * coef[0] * self.__fees), abs(prices[1][i] * last_pair_pos[1] * coef[1] * self.__fees)]
+			# 	last_pair_pos = [0, 0]
+			# 	combination_exposure_trades = 0
 
 
 
@@ -648,6 +648,8 @@ class Backtester:
 			if val_metrics['numTrades'] < self.__min_val_num_trades: continue
 
 			combinations_to_trade.append(tup)
+			used_pairs.add(combination[0])
+			used_pairs.add(combination[1])
 
 		return combinations_to_trade
 

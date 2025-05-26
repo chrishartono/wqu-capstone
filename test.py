@@ -84,7 +84,7 @@ def backtest_test(prices_df: pd.DataFrame):
 	# train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
 	train_window_days = 360
 	# target_params = {'numNeighbours': 10, 'rolling_window_days': 10}
-	target_params = {'look_ahead_days': 5, 'reg_points_thresh_frac': 0.95}
+	target_params = {'look_ahead_days': 10, 'reg_points_thresh_frac': 0.95}
 	backtester = Backtester(prices_df=prices_df,
 							train_window_days=train_window_days,
 							ml_val_window_days=trade_window_days,
@@ -116,7 +116,7 @@ if __name__ == '__main__':
 	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 
 	# TODO: Test run
-	prices_df = prices_df[(prices_df.index >= '2023-01-01') & (prices_df.index <= '2025-01-01')]
+	prices_df = prices_df[(prices_df.index >= '2023-02-01') & (prices_df.index <= '2024-07-01')]
 
 	# manual_test(prices_df)
 	backtest_test(prices_df)
