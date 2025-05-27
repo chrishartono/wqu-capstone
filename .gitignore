@@ -185,3 +185,4 @@ notebook_local/
 catboost_info/
 *.png
 *.orig
+.notvenv
