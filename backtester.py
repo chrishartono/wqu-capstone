@@ -1,6 +1,7 @@
 import gc
 import logging
 import os
+import sys
 import uuid
 from datetime import datetime, timedelta
 from turtledemo.penrose import start
@@ -37,7 +38,6 @@ class Backtester:
 				 trade_window_days: int,
 				 val_test_split_coef: float,
 				 features_rolling_windows_days_list: list[int],
-				 target_rolling_window_days: int,
 				 all_possible_combinations: list[tuple[str, str]],
 				 comovement_detection_type: ComovementType,
 				 use_parallelization: bool,
@@ -50,7 +50,8 @@ class Backtester:
 				 num_good_combs_to_choose: int,
 				 use_top_model: TopModelType,
 				 target_type: TargetType,
-				 target_params: dict):
+				 target_params: dict,
+				 close_on_no_signal: bool):
 
 		self.__backtest_id = str(uuid.uuid4())
 		logging.info(f'Backtest_id={self.__backtest_id}')
@@ -59,7 +60,6 @@ class Backtester:
 		self.__train_window_days = train_window_days
 		self.__ml_val_window_days = ml_val_window_days
 		self.__features_rolling_windows_days_list = features_rolling_windows_days_list
-		self.__target_rolling_window_days = target_rolling_window_days
 		self.__all_possible_combinations = all_possible_combinations
 		self.__comovement_type = comovement_detection_type
 		self.__date_bounds = self.__make_date_bounds(prices_df, train_window_days, trade_window_days, val_test_split_coef)
@@ -81,6 +81,7 @@ class Backtester:
 		else:
 			raise Exception(f'Unknown target type: {target_type}')
 
+		self.__close_on_no_signal = close_on_no_signal
 
 		self.__annualized_multiplier = np.sqrt(24 * 365)
 
@@ -365,12 +366,12 @@ class Backtester:
 					last_pair_pos = [last_pair_pos[0] - np.sign(coef[0]), last_pair_pos[1] - np.sign(coef[1])]
 					last_fees = [abs(prices[0][i] * coef[0] * self.__fees), abs(prices[1][i] * coef[1] * self.__fees)]
 
-			# elif combination_exposure_trades != 0: # No signal, close position if it is open
-			# 	last_pair_cash_pos = [last_pair_cash_pos[0] + prices[0][i] * last_pair_pos[0] * abs(coef[0]),
-			# 						  last_pair_cash_pos[1] + prices[1][i] * last_pair_pos[1] * abs(coef[1])]
-			# 	last_fees = [abs(prices[0][i] * last_pair_pos[0] * coef[0] * self.__fees), abs(prices[1][i] * last_pair_pos[1] * coef[1] * self.__fees)]
-			# 	last_pair_pos = [0, 0]
-			# 	combination_exposure_trades = 0
+			elif self.__close_on_no_signal and combination_exposure_trades != 0: # No signal, close position if it is open
+				last_pair_cash_pos = [last_pair_cash_pos[0] + prices[0][i] * last_pair_pos[0] * abs(coef[0]),
+									  last_pair_cash_pos[1] + prices[1][i] * last_pair_pos[1] * abs(coef[1])]
+				last_fees = [abs(prices[0][i] * last_pair_pos[0] * coef[0] * self.__fees), abs(prices[1][i] * last_pair_pos[1] * coef[1] * self.__fees)]
+				last_pair_pos = [0, 0]
+				combination_exposure_trades = 0
 
 
 
@@ -672,6 +673,8 @@ class Backtester:
 														  self.__comovement_type,
 														  self.__n_jobs,
 														  self.__num_good_combs_to_choose)
+
+			# sys.exit(0)
 
 			data_tuples = self.__prepare_all_combination_datas(good_combinations, all_slice, end_train_date)
 			val_comb_metrics_tups = self.__get_val_metrics(data_tuples, start_date, end_train_date, end_val_date, end_test_date)

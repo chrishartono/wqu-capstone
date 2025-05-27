@@ -87,27 +87,35 @@ def AddClassificationOLSTarget(feats_df: pd.DataFrame,
 
 	look_ahead_days = target_params['look_ahead_days']
 	reg_points_thresh_frac = target_params['reg_points_thresh_frac']
+	exceedance_thresh_frac = target_params['exceedance_thresh_frac']
 
 	window = look_ahead_days * 24
 	values = feats_df[target_col].to_numpy()
 	target = np.full(len(values), SignalTypes.NONE)
-	x_values = np.arange(window)
 
-	X = sm.add_constant(x_values)
+	# x_values = np.arange(window)
+	# X = sm.add_constant(x_values)
 	i = 0
-	while i + window < len(values):
-		y = values[i:i + window]
-		result = sm.OLS(y, X).fit()
-		intercept = result.params[0]
-		slope = result.params[1]
-
-		regression_line = x_values * slope + intercept
+	while i + 1 + window < len(values) and window >= 24 * 2:
 		current_value = values[i]
-		regression_above_points = regression_line[regression_line > current_value]
-		regression_below_points = regression_line[regression_line < current_value]
+		future_values = values[i + 1 : i + 1 + window]
 
-		above_points_frac = len(regression_above_points) / len(regression_line)
-		below_points_frac = len(regression_below_points) / len(regression_line)
+		future_above_points = future_values[(future_values - current_value) / current_value >= exceedance_thresh_frac]
+		future_below_points = future_values[(current_value - future_values) / current_value >= exceedance_thresh_frac]
+		above_points_frac = len(future_above_points) / len(future_values)
+		below_points_frac = len(future_below_points) / len(future_values)
+
+		# result = sm.OLS(y, X).fit()
+		# intercept = result.params[0]
+		# slope = result.params[1]
+		#
+		# regression_line = x_values * slope + intercept
+		# current_value = values[i]
+		# regression_above_points = regression_line[regression_line > current_value]
+		# regression_below_points = regression_line[regression_line < current_value]
+
+		# above_points_frac = len(regression_above_points) / len(regression_line)
+		# below_points_frac = len(regression_below_points) / len(regression_line)
 
 		if above_points_frac >= reg_points_thresh_frac:
 			target[i] = SignalTypes.BUY
@@ -115,6 +123,8 @@ def AddClassificationOLSTarget(feats_df: pd.DataFrame,
 			target[i] = SignalTypes.SELL
 
 		i += 1
+		if i + 1 + window >= len(values):
+			window -= 1
 
 	feats_target_df = feats_df.copy()
 	feats_target_df[resulting_target_column] = target
