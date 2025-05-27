@@ -3,6 +3,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timedelta
+from turtledemo.penrose import start
 
 import numpy as np
 import pandas
@@ -87,6 +88,19 @@ class Backtester:
 		self.__stats_by_comb = {}
 
 		self.__use_top_model = use_top_model
+
+		self.__main_path, self.__aggregated_path = self.__create_main_paths()
+
+	def __create_main_paths(self):
+		now = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
+		main_path = f'results/{now}_{self.__backtest_id}'
+		aggregated_path = f'{main_path}/aggregated'
+
+		os.makedirs(main_path, exist_ok=True)
+		os.makedirs(aggregated_path, exist_ok=True)
+
+		return main_path, aggregated_path
+
 
 	@staticmethod
 	def __make_date_bounds_no_val(prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int):
@@ -320,6 +334,7 @@ class Backtester:
 		last_pair_pos = [0, 0]
 
 		for i, prediction in enumerate(preds):
+			prediction=prediction[0]
 			# coef = [coef_orig[0] * coef_adjustment, coef_orig[1] * coef_adjustment]
 			coef = [coef_orig[0], coef_orig[1]]
 
@@ -349,6 +364,15 @@ class Backtester:
 					last_pair_cash_pos = [last_pair_cash_pos[0] + prices[0][i] * coef[0], last_pair_cash_pos[1] + prices[1][i] * coef[1]]
 					last_pair_pos = [last_pair_pos[0] - np.sign(coef[0]), last_pair_pos[1] - np.sign(coef[1])]
 					last_fees = [abs(prices[0][i] * coef[0] * self.__fees), abs(prices[1][i] * coef[1] * self.__fees)]
+
+			# elif combination_exposure_trades != 0: # No signal, close position if it is open
+			# 	last_pair_cash_pos = [last_pair_cash_pos[0] + prices[0][i] * last_pair_pos[0] * abs(coef[0]),
+			# 						  last_pair_cash_pos[1] + prices[1][i] * last_pair_pos[1] * abs(coef[1])]
+			# 	last_fees = [abs(prices[0][i] * last_pair_pos[0] * coef[0] * self.__fees), abs(prices[1][i] * last_pair_pos[1] * coef[1] * self.__fees)]
+			# 	last_pair_pos = [0, 0]
+			# 	combination_exposure_trades = 0
+
+
 
 			# Adding fees directly to cash_flow so they can accumulate
 			last_pair_cash_pos = [last_pair_cash_pos[0] - last_fees[0], last_pair_cash_pos[1] - last_fees[1]]
@@ -410,6 +434,8 @@ class Backtester:
 		stats_df = pd.DataFrame(combination_mtm_max_capital_based, index=test.index, columns=['mtm'])
 
 		coef_history_arrays = [np.array(coef_history[0]), np.array(coef_history[1])]
+		stats_df[pair0] = prices[0]
+		stats_df[pair1] = prices[1]
 		stats_df['spread'] = prices[0] * coef_history_arrays[0] + prices[1] * coef_history_arrays[1]
 		stats_df[f'pos'] = combination_pos
 		stats_df[f'mtm_returns'] = (stats_df['mtm'] - stats_df['mtm'].shift(1)) / abs(stats_df['mtm'].shift(1))
@@ -426,10 +452,16 @@ class Backtester:
 
 		return stats_df, metrics
 
-	def __combine_results(self, comb_stats_tups: list[tuple[tuple[str, str], pandas.DataFrame]]):
+	def __combine_results(self, comb_stats_tups: list[tuple[tuple[str, str], pandas.DataFrame, dict]]):
 
 		individual_dfs = []
-		for combination, stats_df in comb_stats_tups:
+		columns = []
+		for combination, stats_df, _ in comb_stats_tups:
+			pair0 = combination[0]
+			pair1 = combination[1]
+
+			columns.append(f'{pair0}_{pair1}_mtm_returns')
+
 			if combination not in self.__stats_by_comb:
 				self.__stats_by_comb[combination] = stats_df
 			else:
@@ -439,6 +471,7 @@ class Backtester:
 			individual_dfs.append(stats_df['mtm_returns'])
 
 		iteration_portfolio_df = pd.concat(individual_dfs, axis=1)
+		iteration_portfolio_df.columns = columns
 
 		# We assume equal capital allocations across all combinations
 		iteration_portfolio_df['portfolio_returns'] = iteration_portfolio_df.mean(axis=1)
@@ -463,6 +496,33 @@ class Backtester:
 		ax[row_ax].set_ylabel('Cumulative returns', color='m')
 		ax[row_ax].set_title(f'{pair0}-{pair1}. Sharpe={metrics["sharpe"]:.4f} Annualized return={metrics["annualized_net_return"]:.4f}')
 
+		# twinx1 = axes[0].twinx()
+		# data[leader].plot(ax=axes[0], color='blue', label=leader)
+		# data[lagged].plot(ax=twinx1, color='orange', label=lagged)
+		# lines, labels = axes[0].get_legend_handles_labels()
+		# lines2, labels2 = twinx1.get_legend_handles_labels()
+		# axes[0].legend(lines + lines2, labels + labels2, loc=0)
+		#
+		# # data['spread'].plot(ax=axes[1])
+		# axes[1].plot(data.index, spread, color='grey')
+		# axes[1].plot(data.index, buy_points, 'g^', markersize=5)
+		# axes[1].plot(data.index, sell_points, 'rv', markersize=5)
+		# axes[1].set_title(f'Sharpe={metrics["sharpe"]:.2f} '
+		# 				  f'Net_return={metrics["annualized_net_return"]:.2f} '
+		# 				  f'MaxDD_pct={metrics["maxDD_pct"]:.2f} '
+		# 				  f'Num_trades={metrics["numTrades"]:.0f}')
+		#
+		# twinx2 = axes[1].twinx()
+		# twinx2.plot(data.index, mtm_returns_cumprod, color='magenta')
+		#
+		# axes[2].plot(data.index, spread, color='grey')
+		# axes[2].plot(data.index, buy_signals, 'g^', markersize=5)
+		# axes[2].plot(data.index, sell_signals, 'rv', markersize=5)
+		# axes[2].set_title(f'All signals')
+		#
+		# axes[3].plot(data.index, pos)
+		# axes[3].set_title('Pos')
+
 		if 'spread' in stats_df.columns:
 			twin_ax0 = ax[row_ax].twinx()
 			twin_ax0.plot(stats_df.index, stats_df['spread'], 'b-')
@@ -479,18 +539,65 @@ class Backtester:
 			ax[row_ax].set_xlabel('Date')
 			ax[row_ax].set_ylabel('Active combinations', color='b')
 
+		plt.tight_layout()
 		fig.savefig(os.path.join(plot_path, f'{save_file_name}.png'))
 		plt.close()
 
-	def __save_all_resulting_metrics(self):
-		all_combined_values = []
-		now = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
-		main_path = f'results/{now}_{self.__backtest_id}'
-		plot_path = f'{main_path}/plots'
-		equity_path = f'{main_path}/equity'
-		os.makedirs(main_path, exist_ok=True)
-		os.makedirs(plot_path, exist_ok=True)
-		os.makedirs(equity_path, exist_ok=True)
+	def __save_iteration_results(self,
+								 iteration: int,
+								 start_date: datetime,
+								 end_date: datetime,
+								 comb_stats_tups: list[tuple[tuple[str, str], pandas.DataFrame, dict]]):
+		start_date_str = start_date.strftime('%Y-%m-%d_%H-%M-%S')
+		end_date_str = end_date.strftime('%Y-%m-%d_%H-%M-%S')
+		iteration_dir = f'{iteration}_({start_date_str})_({end_date_str})'
+
+		iteration_path = f'{self.__main_path}/{iteration_dir}'
+		iteration_plot_path = f'{self.__main_path}/{iteration_dir}/plots'
+		iteration_equity_path = f'{self.__main_path}/{iteration_dir}/equity'
+
+		os.makedirs(iteration_path, exist_ok=True)
+		os.makedirs(iteration_plot_path, exist_ok=True)
+		os.makedirs(iteration_equity_path, exist_ok=True)
+
+		individual_dfs = []
+		columns = []
+		for combination, stats_df, metrics in comb_stats_tups:
+			pair0 = combination[0]
+			pair1 = combination[1]
+
+			columns.append(f'{pair0}_{pair1}_mtm_returns')
+
+			save_file_name = f'{pair0}_{pair1}_{iteration}'
+
+			stats_df['cumprod_mtm_returns'] = (stats_df[f'mtm_returns'] + 1).cumprod()
+			stats_df.to_csv(os.path.join(iteration_equity_path, f'{save_file_name}.csv'), index=True, index_label='date')
+			self.__save_plot(pair0, pair1, stats_df, metrics, iteration_plot_path, save_file_name)
+
+			individual_dfs.append(stats_df['mtm_returns'])
+
+		iteration_portfolio_df = pd.concat(individual_dfs, axis=1)
+		iteration_portfolio_df.columns = columns
+
+		# We assume equal capital allocations across all combinations
+		iteration_portfolio_df['portfolio_returns'] = iteration_portfolio_df.mean(axis=1)
+		iteration_portfolio_df['active_combinations'] = len(individual_dfs)
+
+		if iteration_portfolio_df is not None and len(iteration_portfolio_df) > 0:
+			iteration_portfolio_df['cumprod_mtm_returns'] = (iteration_portfolio_df['portfolio_returns'] + 1).cumprod()
+			trading_days = (iteration_portfolio_df.index[-1] - iteration_portfolio_df.index[0]).days
+			portfolio_metrics = self.__calc_metrics(iteration_portfolio_df['cumprod_mtm_returns'].to_numpy(), trading_days)
+
+			iteration_portfolio_df.to_csv(os.path.join(iteration_equity_path, f'portfolio_equity_{iteration}.csv'), index=True, index_label='date')
+			self.__save_plot('portfolio', 'portfolio', iteration_portfolio_df, portfolio_metrics, iteration_plot_path, f'portfolio_plot_{iteration}')
+
+		del individual_dfs, iteration_portfolio_df
+
+	def __save_all_results(self):
+		aggregated_plot_path = f'{self.__aggregated_path}/plots'
+		aggregated_equity_path = f'{self.__aggregated_path}/equity'
+		os.makedirs(aggregated_plot_path, exist_ok=True)
+		os.makedirs(aggregated_equity_path, exist_ok=True)
 
 		for combination, stats_df in self.__stats_by_comb.items():
 			pair0 = combination[0]
@@ -502,15 +609,17 @@ class Backtester:
 
 			save_file_name = f'{pair0}_{pair1}'
 
-			stats_df[['cumprod_mtm_returns', 'pos']].to_csv(os.path.join(equity_path, f'{save_file_name}.csv'), index=True, index_label='date')
+			stats_df.to_csv(os.path.join(aggregated_equity_path, f'{save_file_name}.csv'), index=True, index_label='date')
 
-			self.__save_plot(pair0, pair1, stats_df, metrics, plot_path, save_file_name)
+			self.__save_plot(pair0, pair1, stats_df, metrics, aggregated_plot_path, save_file_name)
 
 		if self.__portfolio_df is not None and len(self.__portfolio_df) > 0:
 			self.__portfolio_df['cumprod_mtm_returns'] = (self.__portfolio_df['portfolio_returns'] + 1).cumprod()
 			trading_days = (self.__portfolio_df.index[-1] - self.__portfolio_df.index[0]).days
 			portfolio_metrics = self.__calc_metrics(self.__portfolio_df['cumprod_mtm_returns'].to_numpy(), trading_days)
-			self.__save_plot('portfolio', 'portfolio', self.__portfolio_df, portfolio_metrics, plot_path, 'portfolio_plot')
+
+			self.__portfolio_df.to_csv(os.path.join(aggregated_equity_path, f'portfolio_equity.csv'), index=True, index_label='date')
+			self.__save_plot('portfolio', 'portfolio', self.__portfolio_df, portfolio_metrics, aggregated_plot_path, 'portfolio_plot')
 
 	def __get_val_metrics(self, data_tuples, start_date: datetime, end_train_date: datetime, end_val_date: datetime, end_test_date: datetime):
 		val_comb_metrics_tups = []
@@ -539,11 +648,15 @@ class Backtester:
 			if val_metrics['numTrades'] < self.__min_val_num_trades: continue
 
 			combinations_to_trade.append(tup)
+			used_pairs.add(combination[0])
+			used_pairs.add(combination[1])
 
 		return combinations_to_trade
 
 	def Run(self):
-		for start_date, end_train_date, end_val_date, end_test_date in self.__date_bounds:
+		logging.info(f'Will run {len(self.__date_bounds)} iterations')
+		for iteration, (start_date, end_train_date, end_val_date, end_test_date) in enumerate(self.__date_bounds):
+			logging.info(f'Start iteration {iteration}')
 			#
 			# start_date = '2023-10-18 00:00:00'
 			# end_train_date = '2024-08-12 00:00:00'
@@ -567,12 +680,13 @@ class Backtester:
 			for combination, val_metrics, coint_vector, model, comb_test, comb_val in combinations_to_trade:
 				preds = Predict(comb_test, comb_val, model, combination, self.__use_top_model)
 				stats_df, test_metrics = self.__trading_logic(combination, comb_test, preds, coint_vector)
-				comb_stats_tups.append((combination, stats_df))
+				comb_stats_tups.append((combination, stats_df, test_metrics))
 
 			if comb_stats_tups:
 				self.__combine_results(comb_stats_tups)
+				self.__save_iteration_results(iteration, start_date, end_test_date, comb_stats_tups)
 
 			del data_tuples, val_comb_metrics_tups, combinations_to_trade, comb_stats_tups
 			gc.collect()
 
-		self.__save_all_resulting_metrics()
+		self.__save_all_results()
