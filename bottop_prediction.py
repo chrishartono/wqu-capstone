@@ -172,6 +172,7 @@ def save_clf_results(combination: tuple[str, str],
 	report = classification_report(y_test, y_pred)
 	logging.info(f"Classification report:\n{report}")
 
+	save_roc_plot(combination, y_train, y_test, y_probs)
 	save_pr_plot(combination, y_train, y_test, y_probs)
 	save_feature_importance(combination, clf, columns)
 
@@ -206,6 +207,7 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 	y_pred = clf.predict(X_test)
 
 	# save_clf_results(combination, clf, list(X_train.columns), y_train, y_test, y_probs, y_pred)
+	# sys.exit(0)
 
 	del train, X_train, X_test, y_train, y_test, y_probs
 	# del val, train, X_train, X_val, X_test, y_train, y_val, y_test, y_probs

@@ -58,5 +58,6 @@ def SearchForGoodCombinations(prices_df: pd.DataFrame, all_possible_combinations
 	# 	# used_pairs.add(comb[1])
 
 	logging.info(f'Finally got {len(good_combinations)} good combinations for prices slice from {prices_df.index[0]} to {prices_df.index[-1]}')
+	# logging.info(good_combinations)
 
 	return good_combinations
