@@ -439,7 +439,7 @@ class Backtester:
 		stats_df[pair1] = prices[1]
 		stats_df['spread'] = prices[0] * coef_history_arrays[0] + prices[1] * coef_history_arrays[1]
 		stats_df[f'pos'] = combination_pos
-		stats_df[f'mtm_returns'] = (stats_df['mtm'] - stats_df['mtm'].shift(1)) / abs(stats_df['mtm'].shift(1))
+		stats_df[f'mtm_returns'] = stats_df['mtm'].pct_change()
 		stats_df[f'mtm_returns'].replace([np.inf, -np.inf], np.nan, inplace=True)
 		stats_df[f'mtm_returns'].fillna(0, inplace=True)
 		stats_df[f'signals'] = signals

@@ -101,12 +101,12 @@ def backtest_test(prices_df: pd.DataFrame):
 							risk_free_rate=0,
 							fees=0.1 / 100,
 							min_val_net_return=0.1,
-							min_val_num_trades=trade_window_days,
-							num_good_combs_to_choose=100,
+							min_val_num_trades=trade_window_days*5,
+							num_good_combs_to_choose=300,
 							use_top_model=None, # TopModelType.ARIMA is ready to use
 							target_type=TargetType.OLS_CLF,
 							target_params=target_params,
-							close_on_no_signal=True)
+							close_on_no_signal=False)
 	backtester.Run()
 
 if __name__ == '__main__':
