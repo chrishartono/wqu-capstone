@@ -228,7 +228,7 @@ def Predict(data: pd.DataFrame,
 	y_pred = model.predict(X)
 
 	if use_top_model == TopModelType.ARIMA:
-		top_model_arima = TopModelArima(pre_data=data_val, window=24, reference_column='volume_returns_diff')
+		top_model_arima = TopModelArima(pre_data=data_val, window=24, reference_column='spread')
 		y_pred_top_model = top_model_arima.predict(data)
 
 		y_pred = apply_top_model_filter(y_signal=y_pred, y_filter=y_pred_top_model)
