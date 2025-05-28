@@ -20,10 +20,10 @@ from top_model import TopModelArima, TopModelType
 from utils.helpers import DaysWindowToPeriods, LogValueCounts
 
 catboost_hyperparameters = {
-	'depth': 4, 
+	'depth': 5, 
 	'iterations': 1000, 
 	'loss_function': 'MultiClass',
-	'learning_rate': 0.1, 
+	'learning_rate': 0.01, 
 	'random_state': 13579
 }
 
