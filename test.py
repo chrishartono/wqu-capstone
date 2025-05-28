@@ -7,7 +7,7 @@ import pandas as pd
 from concurrent_log_handler import ConcurrentRotatingFileHandler
 
 from backtester import Backtester
-from bottop_prediction import TopModelType
+from top_model import TopModelType
 from combinations import CreateAllPossibleCombinations
 from comovement import ComovementType, test_cointegration
 from feature_engineering import AddFeatures
