@@ -7,7 +7,7 @@ import pandas as pd
 from concurrent_log_handler import ConcurrentRotatingFileHandler
 
 from backtester import Backtester
-from bottop_prediction import TopModelType
+from top_model import TopModelType
 from combinations import CreateAllPossibleCombinations
 from comovement import ComovementType, test_cointegration
 from feature_engineering import AddFeatures
@@ -75,23 +75,24 @@ def backtest_test(prices_df: pd.DataFrame):
 	# np.random.shuffle(all_possible_combinations)
 
 	# all_possible_combinations_slice = all_possible_combinations[:1000]
-	# all_possible_combinations_slice = [('close_axs-usdt', 'close_mana-usdt')]
-	# all_possible_combinations_slice = [('close_btcdown-usdt', 'close_btcup-usdt')]
+	# all_possible_combinations_slice = [('close_vet-usdt', 'close_sc-usdt')]
+
+	all_possible_combinations_slice = [('close_algo-usdt', 'close_reef-usdt')]
+	# all_possible_combinations_slice = [('close_bat-usdt', 'close_omg-usdt')]
 	# all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt'), ('close_troy-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_clv-usdt'),
 	# 								   ('close_rei-usdt', 'close_algo-usdt'), ('close_voxel-usdt', 'close_algo-usdt'), ('close_amp-usdt', 'close_bico-usdt'),
 	# 								   ('close_badger-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_celo-usdt'), ('close_rei-usdt', 'close_ach-usdt')]
-	trade_window_days = 30
+	trade_window_days = 60
 	# train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
-	train_window_days = 360
+	train_window_days = 720
 	# target_params = {'numNeighbours': 10, 'rolling_window_days': 10}
-	target_params = {'look_ahead_days': 10, 'reg_points_thresh_frac': 0.95}
+	target_params = {'look_ahead_days': 20, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
 	backtester = Backtester(prices_df=prices_df,
 							train_window_days=train_window_days,
 							ml_val_window_days=trade_window_days,
 							trade_window_days=trade_window_days,
 							val_test_split_coef=0.5,
 							features_rolling_windows_days_list=[1, 5, 10],
-							target_rolling_window_days=10,
 							all_possible_combinations=all_possible_combinations,
 							comovement_detection_type=ComovementType.GC_MI,
 							use_parallelization=True,
@@ -104,7 +105,8 @@ def backtest_test(prices_df: pd.DataFrame):
 							num_good_combs_to_choose=100,
 							use_top_model=None, # TopModelType.ARIMA is ready to use
 							target_type=TargetType.OLS_CLF,
-							target_params=target_params)
+							target_params=target_params,
+							close_on_no_signal=True)
 	backtester.Run()
 
 if __name__ == '__main__':
@@ -116,7 +118,8 @@ if __name__ == '__main__':
 	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 
 	# TODO: Test run
-	prices_df = prices_df[(prices_df.index >= '2023-02-01') & (prices_df.index <= '2024-07-01')]
+	# prices_df = prices_df[(prices_df.index >= '2023-02-01') & (prices_df.index <= '2024-07-01')]
+	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
 
 	# manual_test(prices_df)
 	backtest_test(prices_df)

@@ -119,6 +119,8 @@ def add_spread_above_pred(feats_df: pd.DataFrame):
 	local_feats_df['spread_above_prediction'] = 0
 	local_feats_df.loc[local_feats_df['spread'] > local_feats_df['spread_prediction'], 'spread_above_prediction'] = 1
 
+	local_feats_df['spread-spread_prediction_pct'] = (local_feats_df['spread'] - local_feats_df['spread_prediction']) / local_feats_df['spread_prediction']
+
 	return local_feats_df
 
 def clean(feats_df: pd.DataFrame):
