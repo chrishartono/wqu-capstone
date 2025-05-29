@@ -203,16 +203,45 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 	clf.fit(X=X_train, y=y_train)
 
 	logging.info(f'Making predictions for {len(X_test)} rows')
-	y_probs = clf.predict_proba(X_test)
 	y_pred = clf.predict(X_test)
 
+	# y_probs = clf.predict_proba(X_test)
 	# save_clf_results(combination, clf, list(X_train.columns), y_train, y_test, y_probs, y_pred)
+	# del y_probs
 	# sys.exit(0)
 
-	del train, X_train, X_test, y_train, y_test, y_probs
-	# del val, train, X_train, X_val, X_test, y_train, y_val, y_test, y_probs
+	del train, X_train, X_test, y_train, y_test
+	# del val, train, X_train, X_val, X_test, y_train, y_val, y_test
 
 	return y_pred, clf
+
+def ResearchTrain(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str]):
+	logging.info(f'Start bottom model training for {combination}')
+
+	X_train = train.drop(columns=['TARGET'])
+	X_test = test.drop(columns=['TARGET'])
+	y_train = train['TARGET']
+	y_test = test['TARGET']
+
+	LogValueCounts(y_train.unique(), y_train.value_counts(sort=False).values, 'Train', len(y_train))
+	clf = CatBoostClassifier(verbose=0, **catboost_hyperparameters)
+	clf.fit(X=X_train, y=y_train)
+	# y_pred = clf.predict(X_test)
+	y_probs = clf.predict_proba(X_test)
+
+
+	macro_roc_auc_ovr = roc_auc_score(y_test, y_probs, multi_class="ovr", average="macro")
+	auc_values = {'macro': macro_roc_auc_ovr}
+
+	fpr, tpr, fpr_classes_list, tpr_classes_list = calc_multiclass_macro_auc(y_train, y_test, y_probs)
+	for i in range(len(fpr_classes_list)):
+		fpr_class = fpr_classes_list[i]
+		tpr_class = tpr_classes_list[i]
+		auc_class = auc(fpr_class, tpr_class)
+		auc_values[i] = auc_class
+
+	return auc_values
+
 
 def apply_top_model_filter(y_signal, y_filter):
 	y_signal_filtered = y_signal.reshape(-1) * np.array(y_filter)

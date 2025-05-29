@@ -19,7 +19,7 @@ from joblib import Parallel, delayed
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-from bottop_prediction import Predict, Train, TopModelType
+from bottop_prediction import Predict, ResearchTrain, Train, TopModelType
 from combinations import SearchForGoodCombinations
 from comovement import ComovementType
 from feature_engineering import AddFeatures
@@ -58,6 +58,7 @@ class Backtester:
 
 		self.__prices_df = prices_df
 		self.__train_window_days = train_window_days
+		self.__trade_window_days = trade_window_days
 		self.__ml_val_window_days = ml_val_window_days
 		self.__features_rolling_windows_days_list = features_rolling_windows_days_list
 		self.__all_possible_combinations = all_possible_combinations
@@ -693,3 +694,62 @@ class Backtester:
 			gc.collect()
 
 		self.__save_all_results()
+
+	def __plot_class_auc_hist(self, auc_values: dict[str, list[float]]):
+
+		fig, ax = plt.subplots(1, ncols=len(auc_values.keys()), figsize=(35, 10))
+
+		for i, (label, aucs) in enumerate(auc_values.items()):
+			q25, q75 = np.percentile(aucs, [25, 75])
+			bin_width = 2 * (q75 - q25) * len(aucs) ** (-1 / 3)
+			bins = round((max(aucs) - min(aucs)) / bin_width)
+			ax[i].hist(aucs, bins=bins)
+
+			auc_mean = np.mean(aucs)
+			auc_median = np.median(aucs)
+			auc_std = np.std(aucs)
+			ax[i].set_title(f'{label} AUC hist. Mean={auc_mean:.3f}. Median={auc_median:.3f}. Std={auc_std:.3f}')
+
+		fig.savefig(f'{self.__main_path}/auc_distribution_'
+					f'trn{self.__train_window_days}_trd{self.__trade_window_days}_'
+					f'ncomb{self.__num_good_combs_to_choose}_{self.__backtest_id}.png')
+		plt.close()
+
+	def MLPredictionQualityTest(self, desired_num_samples: int):
+		sample_size = (self.__train_window_days + self.__trade_window_days) * 24
+		possible_num_samples = int(len(self.__prices_df) / sample_size)
+
+		all_slices = np.array_split(self.__prices_df, possible_num_samples)
+
+		if possible_num_samples >= desired_num_samples + 2:
+			indices = np.round(np.linspace(1, len(all_slices) - 2, desired_num_samples)).astype(int)
+		else:
+			indices = np.round(np.linspace(0, len(all_slices) - 1, possible_num_samples)).astype(int)
+		selected_slices = [all_slices[i] for i in indices]
+
+		all_auc_values = dict()
+		for i, df_slice in enumerate(selected_slices):
+			logging.info(f'Starting iteration {i} out of {len(selected_slices)}')
+			end_train_date = df_slice.index[-1] - timedelta(days=self.__train_window_days)
+
+			good_combinations = SearchForGoodCombinations(df_slice,
+														  self.__all_possible_combinations,
+														  self.__comovement_type,
+														  self.__n_jobs,
+														  self.__num_good_combs_to_choose)
+			if not good_combinations: continue
+
+			data_tuples = self.__prepare_all_combination_datas(good_combinations, df_slice, end_train_date)
+			if not data_tuples: continue
+
+			for j, (comb_data, combination, coint_vector) in enumerate(data_tuples):
+				logging.info(f'Starting combination {j} {combination} out of {len(data_tuples)}')
+				comb_train = comb_data[comb_data.index <= end_train_date]
+				comb_test =  comb_data[comb_data.index > end_train_date]
+				auc_values = ResearchTrain(comb_train, comb_test, combination)
+
+				for label, auc_value in auc_values.items():
+					if label not in all_auc_values: all_auc_values[label] = []
+					all_auc_values[label].append(auc_value)
+
+		self.__plot_class_auc_hist(all_auc_values)

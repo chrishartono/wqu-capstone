@@ -82,9 +82,9 @@ def backtest_test(prices_df: pd.DataFrame):
 	# all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt'), ('close_troy-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_clv-usdt'),
 	# 								   ('close_rei-usdt', 'close_algo-usdt'), ('close_voxel-usdt', 'close_algo-usdt'), ('close_amp-usdt', 'close_bico-usdt'),
 	# 								   ('close_badger-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_celo-usdt'), ('close_rei-usdt', 'close_ach-usdt')]
-	trade_window_days = 60
+	trade_window_days = 30
 	# train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
-	train_window_days = 720
+	train_window_days = 360
 	# target_params = {'numNeighbours': 10, 'rolling_window_days': 10}
 	target_params = {'look_ahead_days': 20, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
 	backtester = Backtester(prices_df=prices_df,
@@ -106,21 +106,57 @@ def backtest_test(prices_df: pd.DataFrame):
 							use_top_model=None, # TopModelType.ARIMA is ready to use
 							target_type=TargetType.OLS_CLF,
 							target_params=target_params,
-							close_on_no_signal=False)
+							close_on_no_signal=True)
 	backtester.Run()
+
+def ml_quality_test(prices_df: pd.DataFrame, train_window_days, trade_window_days, num_good_combs_to_choose, desired_num_samples):
+	all_possible_combinations = CreateAllPossibleCombinations(prices_df)
+	# np.random.shuffle(all_possible_combinations)
+	# all_possible_combinations_slice = all_possible_combinations[:500]
+
+	target_params = {'look_ahead_days': 20, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
+	backtester = Backtester(prices_df=prices_df,
+							train_window_days=train_window_days,
+							ml_val_window_days=trade_window_days,
+							trade_window_days=trade_window_days,
+							val_test_split_coef=0.5,
+							features_rolling_windows_days_list=[1, 5, 10],
+							all_possible_combinations=all_possible_combinations,
+							comovement_detection_type=ComovementType.GC_MI,
+							use_parallelization=True,
+							combination_limit=1000,
+							trade_limit=1000,
+							risk_free_rate=0,
+							fees=0.1 / 100,
+							min_val_net_return=0.1,
+							min_val_num_trades=trade_window_days*5,
+							num_good_combs_to_choose=num_good_combs_to_choose,
+							use_top_model=None, # TopModelType.ARIMA is ready to use
+							target_type=TargetType.OLS_CLF,
+							target_params=target_params,
+							close_on_no_signal=False)
+
+	backtester.MLPredictionQualityTest(desired_num_samples=desired_num_samples)
 
 if __name__ == '__main__':
 	now_str = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
 	os.makedirs('logs', exist_ok=True)
-	SetLogging(f'logs/wqu_capstone_{now_str}.log', False)
 	# parallel_logging(f'logs/wqu_capstone_{now_str}.log')
 
+	train_window_days = 90
+	trade_window_days = 30
+	num_good_combs_to_choose = 200
+	desired_num_samples = 5
+
+	SetLogging(f'logs/wqu_capstone_{now_str}_trn{train_window_days}_trd{trade_window_days}_'
+			   f'ncombs{num_good_combs_to_choose}_dsmpl{desired_num_samples}.log', False)
 	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 
+	ml_quality_test(prices_df, train_window_days, trade_window_days, num_good_combs_to_choose, desired_num_samples)
 	# TODO: Test run
 	# prices_df = prices_df[(prices_df.index >= '2023-02-01') & (prices_df.index <= '2024-07-01')]
-	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
+	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
 
 	# manual_test(prices_df)
-	backtest_test(prices_df)
+	# backtest_test(prices_df)
 	logging.info('Finished')

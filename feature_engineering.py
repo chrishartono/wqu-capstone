@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from catboost import CatBoostRegressor
 from hurst import compute_Hc
-from pmdarima.arima import auto_arima, ADFTest
+# from pmdarima.arima import auto_arima, ADFTest
 
 from utils.helpers import DaysWindowToPeriods
 
@@ -67,33 +67,33 @@ def add_rolling_hurst(feats_df: pd.DataFrame, window_period: int):
 
 	return data
 
-def add_arima(feats_df: pd.DataFrame, end_train_date: datetime):
-	train = feats_df.loc[feats_df.index <= end_train_date, 'spread']
-	test = feats_df[feats_df.index > end_train_date, 'spread']
-
-	adf_test = ADFTest(alpha=0.05)
-	should_diff = adf_test.should_diff(train)
-
-	arima_model =	auto_arima(train,
-								start_p=0,
-								d=1,
-								start_q=1,
-								max_p=5,
-								max_d=5,
-								start_P=0,
-								D=1,
-								start_Q=0,
-								max_P=5,
-								max_D=5,
-								max_Q=5,
-								m = 12,
-								seasonal = True,
-								error_action='warn',
-								trace = True,
-								supress_warnings = True,
-								stepwise = True,
-								random_state=42,
-								n_fits=50)
+# def add_arima(feats_df: pd.DataFrame, end_train_date: datetime):
+# 	train = feats_df.loc[feats_df.index <= end_train_date, 'spread']
+# 	test = feats_df[feats_df.index > end_train_date, 'spread']
+#
+# 	adf_test = ADFTest(alpha=0.05)
+# 	should_diff = adf_test.should_diff(train)
+#
+# 	arima_model =	auto_arima(train,
+# 								start_p=0,
+# 								d=1,
+# 								start_q=1,
+# 								max_p=5,
+# 								max_d=5,
+# 								start_P=0,
+# 								D=1,
+# 								start_Q=0,
+# 								max_P=5,
+# 								max_D=5,
+# 								max_Q=5,
+# 								m = 12,
+# 								seasonal = True,
+# 								error_action='warn',
+# 								trace = True,
+# 								supress_warnings = True,
+# 								stepwise = True,
+# 								random_state=42,
+# 								n_fits=50)
 
 def add_catboost_spread_prediction(feats_df: pd.DataFrame, end_train_date: datetime):
 	train = feats_df.loc[feats_df.index <= end_train_date]
