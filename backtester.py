@@ -746,7 +746,12 @@ class Backtester:
 				logging.info(f'Starting combination {j} {combination} out of {len(data_tuples)}')
 				comb_train = comb_data[comb_data.index <= end_train_date]
 				comb_test =  comb_data[comb_data.index > end_train_date]
-				auc_values = ResearchTrain(comb_train, comb_test, combination)
+
+				try:
+					auc_values = ResearchTrain(comb_train, comb_test, combination)
+				except Exception as e:
+					logging.error(f'{combination} train failed with exception: {e}')
+					continue
 
 				for label, auc_value in auc_values.items():
 					if label not in all_auc_values: all_auc_values[label] = []
