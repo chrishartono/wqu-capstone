@@ -695,28 +695,43 @@ class Backtester:
 
 		self.__save_all_results()
 
-	def __plot_class_auc_hist(self, auc_values: dict[str, list[float]]):
+	def __plot_metrics_hist(self, all_metrics: dict[str, list[float]]):
 
-		fig, ax = plt.subplots(1, ncols=len(auc_values.keys()), figsize=(35, 10))
+		def plot_group(sorted_items, group_name: str, ax, row: int):
+			for i, (label, values) in enumerate(sorted_items):
+				# Freedman–Diaconis rule
+				q25, q75 = np.percentile(values, [25, 75])
+				bin_width = 2 * (q75 - q25) * len(values) ** (-1 / 3)
+				bins = round((max(values) - min(values)) / bin_width)
+				ax[row, i].hist(values, bins=bins)
 
-		for i, (label, aucs) in enumerate(auc_values.items()):
-			q25, q75 = np.percentile(aucs, [25, 75])
-			bin_width = 2 * (q75 - q25) * len(aucs) ** (-1 / 3)
-			bins = round((max(aucs) - min(aucs)) / bin_width)
-			ax[i].hist(aucs, bins=bins)
+				mean = np.mean(values)
+				median = np.median(values)
+				std = np.std(values)
+				ax[row, i].set_title(f'{label} Mean={mean:.3f}. Median={median:.3f}. Std={std:.3f}')
 
-			auc_mean = np.mean(aucs)
-			auc_median = np.median(aucs)
-			auc_std = np.std(aucs)
-			ax[i].set_title(f'{label} AUC hist. Mean={auc_mean:.3f}. Median={auc_median:.3f}. Std={auc_std:.3f}')
+		auc_items = [(k, v) for k, v in all_metrics.items() if 'auc' in k]
+		auc_items.sort(key=lambda x: x[0])
 
-		fig.savefig(f'{self.__main_path}/auc_distribution_'
+		f1_default_items = [(k, v) for k, v in all_metrics.items() if 'f1_default' in k]
+		f1_default_items.sort(key=lambda x: x[0])
+
+		f1_tuned_items = [(k, v) for k, v in all_metrics.items() if 'f1_tuned' in k]
+		f1_tuned_items.sort(key=lambda x: x[0])
+
+		fig, axes = plt.subplots(3, ncols=len(auc_items), figsize=(35, 20))
+
+		plot_group(auc_items, group_name='AUC', ax=axes, row=0)
+		plot_group(f1_default_items, group_name='F1 Default Threshold', ax=axes, row=1)
+		plot_group(f1_tuned_items, group_name='F1 Tuned Threshold', ax=axes, row=2)
+
+		fig.savefig(f'{self.__main_path}/metrics_distribution_'
 					f'trn{self.__train_window_days}_trd{self.__trade_window_days}_'
 					f'ncomb{self.__num_good_combs_to_choose}_{self.__backtest_id}.png')
 		plt.close()
 
 	def MLPredictionQualityTest(self, desired_num_samples: int):
-		sample_size = (self.__train_window_days + self.__trade_window_days) * 24
+		sample_size = (self.__train_window_days + self.__ml_val_window_days + self.__trade_window_days) * 24
 		possible_num_samples = int(len(self.__prices_df) / sample_size)
 
 		all_slices = np.array_split(self.__prices_df, possible_num_samples)
@@ -727,12 +742,15 @@ class Backtester:
 			indices = np.round(np.linspace(0, len(all_slices) - 1, possible_num_samples)).astype(int)
 		selected_slices = [all_slices[i] for i in indices]
 
-		all_auc_values = dict()
+		all_metrics = dict()
 		for i, df_slice in enumerate(selected_slices):
 			logging.info(f'Starting iteration {i} out of {len(selected_slices)}')
-			end_train_date = df_slice.index[-1] - timedelta(days=self.__train_window_days)
+			end_train_date = df_slice.index[0] + timedelta(days=self.__train_window_days)
+			end_val_date = end_train_date + timedelta(days=self.__ml_val_window_days)
 
-			good_combinations = SearchForGoodCombinations(df_slice,
+			train = df_slice[df_slice.index <= end_train_date]
+
+			good_combinations = SearchForGoodCombinations(train,
 														  self.__all_possible_combinations,
 														  self.__comovement_type,
 														  self.__n_jobs,
@@ -745,16 +763,17 @@ class Backtester:
 			for j, (comb_data, combination, coint_vector) in enumerate(data_tuples):
 				logging.info(f'Starting combination {j} {combination} out of {len(data_tuples)}')
 				comb_train = comb_data[comb_data.index <= end_train_date]
-				comb_test =  comb_data[comb_data.index > end_train_date]
+				comb_val = comb_data[(comb_data.index > end_train_date) & (comb_data.index <= end_val_date)]
+				comb_test =  comb_data[comb_data.index > end_val_date]
 
 				try:
-					auc_values = ResearchTrain(comb_train, comb_test, combination)
+					metrics = ResearchTrain(comb_train, comb_val, comb_test, combination)
 				except Exception as e:
 					logging.error(f'{combination} train failed with exception: {e}')
 					continue
 
-				for label, auc_value in auc_values.items():
-					if label not in all_auc_values: all_auc_values[label] = []
-					all_auc_values[label].append(auc_value)
+				for label, metric_value in metrics.items():
+					if label not in all_metrics: all_metrics[label] = []
+					all_metrics[label].append(metric_value)
 
-		self.__plot_class_auc_hist(all_auc_values)
+		self.__plot_metrics_hist(all_metrics)

@@ -111,8 +111,8 @@ def backtest_test(prices_df: pd.DataFrame):
 
 def ml_quality_test(prices_df: pd.DataFrame, train_window_days, trade_window_days, num_good_combs_to_choose, desired_num_samples):
 	all_possible_combinations = CreateAllPossibleCombinations(prices_df)
-	# np.random.shuffle(all_possible_combinations)
-	# all_possible_combinations_slice = all_possible_combinations[:500]
+	np.random.shuffle(all_possible_combinations)
+	all_possible_combinations_slice = all_possible_combinations[:500]
 
 	target_params = {'look_ahead_days': 20, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
 	backtester = Backtester(prices_df=prices_df,
@@ -121,7 +121,7 @@ def ml_quality_test(prices_df: pd.DataFrame, train_window_days, trade_window_day
 							trade_window_days=trade_window_days,
 							val_test_split_coef=0.5,
 							features_rolling_windows_days_list=[1, 5, 10],
-							all_possible_combinations=all_possible_combinations,
+							all_possible_combinations=all_possible_combinations_slice,
 							comovement_detection_type=ComovementType.GC_MI,
 							use_parallelization=True,
 							combination_limit=1000,
