@@ -423,7 +423,13 @@ class Backtester:
 		# If we made no trades, max_capital_usage=0. But combination_mtm_max_capital_based list will also contain only zeros then.
 		# And in the end we will have issues with calculating metrics
 		max_capital_usage = max(max_capital_usage, 0.01)
-		combination_mtm_max_capital_based = [mtm + max_capital_usage for mtm in combination_mtm_0based]
+		combination_mtm_max_capital_based = np.array([mtm + max_capital_usage for mtm in combination_mtm_0based])
+		mtm_for_portfolio = combination_mtm_max_capital_based.copy()
+
+		neg_mask = mtm_for_portfolio < 0
+		if np.any(neg_mask):
+			first_neg = np.argmax(neg_mask)  # index of first True in neg_mask
+			mtm_for_portfolio[first_neg:] = 0
 
 		# hasbad = np.any([(np.isnan(mtm) or mtm==0) for mtm in combination_mtm_max_capital_based])
 		# if hasbad:
@@ -433,7 +439,8 @@ class Backtester:
 		# new_idx_value_as_list = DatetimeIndex([shifted_last_idx_value], dtype='datetime64[ns]', freq=None)
 		# updated_index = test.index.append(new_idx_value_as_list)
 
-		stats_df = pd.DataFrame(combination_mtm_max_capital_based, index=test.index, columns=['mtm'])
+		stats_df = pd.DataFrame(mtm_for_portfolio, index=test.index, columns=['mtm'])
+		stats_df[f'mtm_non_capped'] = combination_mtm_max_capital_based
 
 		coef_history_arrays = [np.array(coef_history[0]), np.array(coef_history[1])]
 		stats_df[pair0] = prices[0]
@@ -446,7 +453,7 @@ class Backtester:
 		stats_df[f'signals'] = signals
 
 		num_trades = np.count_nonzero(np.array(signals))
-		metrics = self.__calc_metrics(np.array(combination_mtm_max_capital_based), trading_days, num_trades)
+		metrics = self.__calc_metrics(mtm_for_portfolio, trading_days, num_trades)
 		# mtm_returns_cumprod = (stats_df[f'mtm_returns'] + 1).cumprod()
 		# test_metrics_cumprod = self.__calc_metrics(mtm_returns_cumprod.to_numpy(), trading_days)
 
@@ -725,9 +732,10 @@ class Backtester:
 		plot_group(f1_default_items, group_name='F1 Default Threshold', ax=axes, row=1)
 		plot_group(f1_tuned_items, group_name='F1 Tuned Threshold', ax=axes, row=2)
 
-		fig.savefig(f'{self.__main_path}/metrics_distribution_'
+		fig.savefig(f'{self.__main_path}/metrics_distr_'
 					f'trn{self.__train_window_days}_trd{self.__trade_window_days}_'
-					f'ncomb{self.__num_good_combs_to_choose}_{self.__backtest_id}.png')
+					f'ncomb{self.__num_good_combs_to_choose}_tarwin{self.__target_params["look_ahead_days"]}_'
+					f'{self.__backtest_id}.png')
 		plt.close()
 
 	def MLPredictionQualityTest(self, desired_num_samples: int):
