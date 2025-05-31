@@ -4,9 +4,9 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from concurrent_log_handler import ConcurrentRotatingFileHandler
 
 from backtester import Backtester
+from startup_helpers import IsLoggingConfigured, ResetLogFileHandler, SetLogging
 from top_model import TopModelType
 from combinations import CreateAllPossibleCombinations
 from comovement import ComovementType, test_cointegration
@@ -14,33 +14,6 @@ from feature_engineering import AddFeatures
 from spread import AddPolyfitSpread
 from target_creation import AddPeakNeighboursTarget, TargetType
 
-
-def parallel_logging(name):
-	logger = logging.getLogger()
-	# Check if handlers are already configured (prevents duplicate handlers)
-	if not logger.handlers:
-		logger.setLevel(logging.INFO)
-
-		# Set up file handler with concurrency support
-		file_handler = ConcurrentRotatingFileHandler(name, mode='a', maxBytes=1024 * 1024, backupCount=5)
-		file_format = logging.Formatter('%(asctime)s - %(levelname)s - [%(processName)s] - %(message)s')
-		file_handler.setFormatter(file_format)
-		logger.addHandler(file_handler)
-
-		# Set up console handler
-		console_handler = logging.StreamHandler()
-		console_format = logging.Formatter('%(asctime)s - %(levelname)s - [%(processName)s] - %(message)s')
-		console_handler.setFormatter(console_format)
-		logger.addHandler(console_handler)
-
-	return logger
-
-def SetLogging(logname: str, append: bool = False):
-	mode = 'a' if append else 'w'
-	logging.basicConfig(format='%(asctime)s.%(msecs)03d;%(levelname)s;{%(module)s};[%(funcName)s];%(thread)d-%(process)d;%(message)s',
-						datefmt='%d/%m/%Y %I:%M:%S',
-						handlers=[logging.StreamHandler(), logging.FileHandler(logname, mode=mode)],
-						level=logging.INFO)
 
 def manual_test(prices_df: pd.DataFrame):
 	train_frac = 0.8
@@ -138,26 +111,39 @@ def ml_quality_test(prices_df: pd.DataFrame, train_window_days, trade_window_day
 
 	backtester.MLPredictionQualityTest(desired_num_samples=desired_num_samples)
 
+def run_consecutive_ml_quality_tests():
+	now_str = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
+
+	train_window_days_list = [720, 360, 180, 90, 50]
+	trade_window_days = 30
+	num_good_combs_to_choose = 200
+	desired_num_samples = 5
+	target_window_list = [10, 5]
+	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
+
+	for target_window in target_window_list:
+		for train_window_days in train_window_days_list:
+			log_file_name = (f'logs/wqu_capstone_{now_str}_trn{train_window_days}_trd{trade_window_days}_'
+							 f'ncombs{num_good_combs_to_choose}_dsmpl{desired_num_samples}_tarwin{target_window}.log')
+			if not IsLoggingConfigured():
+				SetLogging(log_file_name)
+			else:
+				ResetLogFileHandler(log_file_name)
+
+			prices_df_copy = prices_df.copy()
+			ml_quality_test(prices_df_copy, train_window_days, trade_window_days, num_good_combs_to_choose, desired_num_samples, target_window)
+			logging.info('Finished')
+
 if __name__ == '__main__':
 	now_str = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
 	os.makedirs('logs', exist_ok=True)
 	# parallel_logging(f'logs/wqu_capstone_{now_str}.log')
 
-	train_window_days = 50
-	trade_window_days = 30
-	num_good_combs_to_choose = 200
-	desired_num_samples = 5
-	target_window = 20
-
-	SetLogging(f'logs/wqu_capstone_{now_str}_trn{train_window_days}_trd{trade_window_days}_'
-			   f'ncombs{num_good_combs_to_choose}_dsmpl{desired_num_samples}_tarwin{target_window}.log', False)
-	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
-
-	ml_quality_test(prices_df, train_window_days, trade_window_days, num_good_combs_to_choose, desired_num_samples, target_window)
+	run_consecutive_ml_quality_tests()
 	# TODO: Test run
 	# prices_df = prices_df[(prices_df.index >= '2023-02-01') & (prices_df.index <= '2024-07-01')]
 	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
 
 	# manual_test(prices_df)
 	# backtest_test(prices_df)
-	logging.info('Finished')
+	# logging.info('Finished')
