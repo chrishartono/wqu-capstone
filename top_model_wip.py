@@ -21,6 +21,9 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 import scipy.stats as stats
 from sklearn.manifold import TSNE
 
+from hmmlearn.hmm import GaussianHMM
+from sklearn.preprocessing import StandardScaler
+
 # In[2]:
 
 
@@ -32,10 +35,6 @@ def feature_normalize(dataset):
     mu = np.mean(dataset,axis = 0)
     sigma = np.std(dataset,axis = 0)
     return (dataset - mu)/sigma
-
-
-# In[4]:
-
 
 def replace_outliers(df):
         for column in df.columns:
@@ -60,10 +59,6 @@ def replace_outliers(df):
 
         return df
 
-
-# In[5]:
-
-
 def delete_outliers(df):
     for column in df.columns:
         Q1 = df[column].quantile(0.25)
@@ -85,107 +80,20 @@ def delete_outliers(df):
 
 # In[6]:
 
-
-crypto_data = pd.read_csv('H:/personal/capstone/binance_1h_2021-2025.csv', delimiter = ',' )
-
-
-# In[7]:
-
-
-crypto_data = crypto_data.set_index('date')
-#%%
-crypto_data.head()
+df = pd.read_parquet(r'C:\BOYAN LAB\wqu-capstone\dataset\binance_1h_ohlcv_2021-2025.parquet', engine='pyarrow')
+df = df.set_index('date')
 
 #%%
+crypto_returns_norm = feature_normalize(df)
+crypto_returns_norm = crypto_returns_norm.replace([np.inf, -np.inf], np.nan)
 
-crypto_returns = crypto_data.pct_change()
-crypto_returns = crypto_returns[1:]
-crypto_returns.describe()
-
-
-# In[12]:
-
-
-
-
-np.random.seed(0)
-data1 = np.random.normal(loc=0, scale=1, size=100)
-
-# Creating subplots for QQ plots
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-
-# QQ plot for data1
-stats.probplot(data1, dist="norm", plot=axes[0])
-axes[0].set_title('QQ Plot - Normal Distribution')
-axes[0].set_xlabel('Theoretical Quantiles')
-axes[0].set_ylabel('Sample Quantiles')
-
-# QQ plot for data2
-stats.probplot(crypto_returns["bch-usdt"], dist="norm", plot=axes[1])
-axes[1].set_title('BCH-USDT QQ Plot - Distribution with Heavy Tails')
-axes[1].set_xlabel('Theoretical Quantiles')
-axes[1].set_ylabel('Sample Quantiles')
-
-plt.tight_layout()
-plt.show()
-
-
-# In[ ]:
-
-
-vols = pd.DataFrame(crypto_returns[["bch-usdt"]].rolling(120).std()).rename(columns={"bch-usdt": "bch-usdt STD"})
-
-# set figure size
-plt.figure(figsize=(12, 5))
-
-# plot using rolling average
-sns.lineplot(
-    x=crypto_returns.index,
-    y="bch-usdt STD",
-    data=vols,
-    label="Bitcoin Cash 5 day standard deviation rolling avg",
-)
-plt.show()
+crypto_returns_norm =crypto_returns_norm.dropna(axis=1, how='any')
 
 
 
 #%%
-crypto_returns_norm = feature_normalize(crypto_returns)
-
-crypto_returns_matrix = crypto_returns_norm.corr()
-crypto_returns_matrix
-
-
-#%%
-#heat map
-subset_data = crypto_returns.iloc[:20000, :20]
-corr_matrix = subset_data.corr()
-
-plt.figure(figsize=(12, 6)) 
-sns.heatmap(corr_matrix, annot=True, cmap='coolwarm')
-plt.title('Pairwise Correlation Heatmap (Subset of Data)')
-plt.show()
-
-
-# In[ ]:
-# Calculating spreads
-#crypto_returns_norm['Spread'] = crypto_returns_norm['1inch-usdt'] - crypto_returns_norm['bch-usdt']
-
-
-# # PCA
-
-# In[23]:
-
-
-crypto_returns_norm = crypto_returns_norm.dropna()
-
-
-# In[24]:
-
-
 pca = PCA(n_components=0.95)
 principalComponents = pca.fit_transform(crypto_returns_norm)
-
 
 
 components = pca.components_
@@ -193,7 +101,7 @@ components
 len(components)
 
 
-
+#%%
 explained_variance_ratio = pca.explained_variance_ratio_
 explained_variance_ratio
 
@@ -219,67 +127,172 @@ for i, component_features in enumerate(components_df_sorted.iterrows()):
 
 components_df_sorted
 
+# PCA (or any other linear method) is not a good choice. We need 11 components to achieve 95% explained variance.  
 
-# PCA (or any other linear method) is not a good choice. We need 58 components to achieve 95% explained variance.  
+# %%
 
+def compute_rolling_features(df, asset_col, window=24):
+    df = df.copy()
+    df['Returns'] = df[asset_col].pct_change()
+    df['Rolling Returns'] = df['Returns'].rolling(window=window).mean()
+    df['Rolling Volatility'] = df['Returns'].rolling(window=window).std()
+    df.dropna(inplace=True)
+    return df
+# %%
+volatility_threshold_low = 0.10
+volatility_threshold_high = 0.20
+
+def assign_regime(row):
+    if row['Rolling Returns'] > 0 and row['Rolling Volatility'] > volatility_threshold_high:
+        return 'Bullish/High Volatility'
+    elif row['Rolling Returns'] > 0 and row['Rolling Volatility'] <= volatility_threshold_low:
+        return 'Bullish/Low Volatility'
+    elif row['Rolling Returns'] <= 0 and row['Rolling Volatility'] > volatility_threshold_high:
+        return 'Bearish/High Volatility'
+    elif row['Rolling Returns'] <= 0 and row['Rolling Volatility'] <= volatility_threshold_low:
+        return 'Bearish/Low Volatility'
+    else:
+        return 'Neutral'
+
+# %%
+df['Regime'] = df.apply(assign_regime, axis=1)
+
+# %%
+from hmmlearn.hmm import GaussianHMM
+from sklearn.preprocessing import StandardScaler
+
+# Features to model
+features = df[['Rolling Returns', 'Rolling Volatility']].values
+scaler = StandardScaler()
+features_scaled = scaler.fit_transform(features)
+
+model = GaussianHMM(n_components=4, covariance_type='full', n_iter=1000)
+model.fit(features_scaled)
+
+# Predict regimes
+df['HMM Regime'] = model.predict(features_scaled)
+
+#%%
+btc_df = compute_rolling_features(df, 'close_btc-usdt')
+
+print(btc_df.head())
+
+# %%
+import pandas as pd
+import numpy as np
+
+# Read parquet file
+df = pd.read_parquet(r'C:\BOYAN LAB\wqu-capstone\dataset\binance_1h_ohlcv_2021-2025.parquet', engine='pyarrow')
+
+# Check that the column exists and is numeric
+col = 'close_btc-usdt'
+assert col in df.columns, f"{col} not found in DataFrame columns."
+df[col] = pd.to_numeric(df[col], errors='coerce')
+
+def compute_rolling_features(df, asset_col, window=24):
+    df = df.copy()
+    df['Returns'] = df[asset_col].pct_change()
+    df['Rolling Returns'] = df['Returns'].rolling(window=window).mean()
+    df['Rolling Volatility'] = df['Returns'].rolling(window=window).std()
+    df.dropna(inplace=True)
+    return df
+
+btc_df = compute_rolling_features(df, col)
+print(btc_df.head())
+
+# %%
+import pandas as pd
+import numpy as np
+
+# Read your data (specify engine to avoid any issues)
+df = pd.read_parquet(r'C:\BOYAN LAB\wqu-capstone\dataset\binance_1h_ohlcv_2021-2025.parquet', engine='pyarrow')
+
+# Choose your asset column (e.g., for BTC-USDT)
+asset_col = 'close_btc-usdt'
+assert asset_col in df.columns
+
+# Convert to float32 for safer math if needed
+df[asset_col] = pd.to_numeric(df[asset_col], errors='coerce').astype('float32')
+
+def compute_rolling_features(df, asset_col, window=24):
+    df = df.copy()
+    df['Returns'] = df[asset_col].pct_change()
+    df['Rolling Returns'] = df['Returns'].rolling(window=window).mean()
+    df['Rolling Volatility'] = df['Returns'].rolling(window=window).std()
+    df.dropna(inplace=True)
+    return df
+
+btc_df = compute_rolling_features(df, asset_col, 4)
+
+print(btc_df.head())
+
+
+# %%
+##################
+#HMM
+##################
+
+#Other Features?  
+features = btc_df[['Rolling Returns', 'Rolling Volatility']].values
+scaler = StandardScaler()
+features_scaled = scaler.fit_transform(features)
+
+model = GaussianHMM(n_components=5, covariance_type='full', n_iter=10000)
+model.fit(features_scaled)
+
+btc_df['HMM Regime'] = model.predict(features_scaled)
+
+# %%
+regime_names = {
+    0: "Bullish/High Volatility",
+    1: "Bullish/Low Volatility",
+    2: "Bearish/High Volatility",
+    3: "Bearish/Low Volatility",
+    4: "Neutral"
+}
+
+
+plt.figure(figsize=(10, 12))
+
+for regime in sorted(btc_df['HMM Regime'].unique()):
+    plt.scatter(btc_df[btc_df['HMM Regime'] == regime].index, 
+             btc_df[btc_df['HMM Regime'] == regime][asset_col],
+        s=6,
+        label=regime_names.get(regime, f"Regime {regime}")
+    )
+
+plt.legend(title="Market Regime")
+plt.title("Market Regimes Detected by HMM")
+plt.show()
+
+# %%
+# %%
+# feature selection appraoch with Bayesian Network
+# takes a lot of time
+
+from pgmpy.estimators import HillClimbSearch, K2
+from pgmpy.models import BayesianNetwork
+
+
+df_sparse = btc_df[[asset_col,'Rolling Returns', 'Rolling Volatility']]
+
+hc = HillClimbSearch(df_sparse)
+best_model = hc.estimate(scoring_method=K2(df_sparse))
+
+print(best_model.edges())
+
+
+#%%
 ########################################################
 # # t-SNE
 ########################################################
-Q1 = crypto_data["bch-usdt"].quantile(0.25)
-Q2 = crypto_data["bch-usdt"].quantile(0.50)
-Q3 = crypto_data["bch-usdt"].quantile(0.75)
-
-# Define the quantile intervals and labels
-quantile_intervals = [float('-inf'), Q1, Q2, Q3, float('inf')]
-labels = [1, 2, 3, 4]
-
-# Use pd.cut() to categorize the data based on the intervals and labels
-crypto_data['Quantile Labels'] = pd.cut(crypto_data["bch-usdt"], bins=quantile_intervals, labels=labels, include_lowest=True)
-
-
-
-
-plt.boxplot(crypto_data["bch-usdt"])
-plt.title('Box Plot of Skewed Distribution')
-plt.ylabel('Price')
-plt.show()
-
 
 
 # In[ ]:
 
-
-# Define neutral colors for each quantile label
-quantile_colors = ['green', 'blue', 'purple', 'silver']  # Add more colors if needed
-
-
-# Create a dictionary to store quantile label names and their corresponding colors
-quantile_legend_mapping = {}
-for label, color in zip(crypto_data['Quantile Labels'].unique(), quantile_colors):
-    quantile_legend_mapping[f'Quantile {label}'] = color
-
-plt.figure(figsize=(12, 6))
-
-for label, color in quantile_legend_mapping.items():
-    label_data = crypto_data[crypto_data['Quantile Labels'] == int(label.split()[1])]
-    plt.scatter(label_data.index, label_data["bch-usdt"], s=20, marker='o', label=label, color=color)
-
-# Sort legend entries based on quantile label names
-sorted_legend = [label for label, _ in sorted(quantile_legend_mapping.items(), key=lambda x: int(x[0].split()[1]))]
-plt.legend(sorted_legend)
-
-plt.title('Bitcoin Cash by Quantile')
-plt.xlabel('Index')
-plt.ylabel('Bitcoin cash')
-plt.show()
-
-
-# In[ ]:
-
-crypto_returns = crypto_returns.dropna()
-X_pre_tsne = crypto_returns[["bch-usdt"]]
+X_pre_tsne = btc_df[['Rolling Returns']]
 X_tsne = feature_normalize(X_pre_tsne)
-y_pre_tsne = crypto_data['Quantile Labels']
+y_pre_tsne = btc_df[['HMM Regime']]
 
 
 # check on lenghts
@@ -350,33 +363,6 @@ df['color'] = df['label'].map(color_dict)
 
 
 # Not surprisingly there is one clear class that can be separated nicely (if not perfectly) from the rest and that is label 4 (the majority of which are prices after 2019) 
-
-
-#%%
-# ## Running regressions to determine relevant factors  
-import statsmodels.api as sm
-
-
-X = crypto_returns_norm.drop(columns=['bch-usdt'])
-
-# Add a constant term to the predictor matrix (required by statsmodels)
-X = sm.add_constant(X)
-
-# Define the dependent variable
-y = crypto_returns_norm['bch-usdt']
-
-# Fit the regression model
-model = sm.OLS(y, X).fit()
-
-# Print the regression summary
-print(model.summary())
-
-
-# Linear regression is in fact not recommended as the correlations are obviously not linear. This can be seen in the next plots
-
-sns.scatterplot(x=crypto_returns_norm['bch-usdt'],y=crypto_returns_norm['1inch-usdt']) 
-
-#%%
 
 #%%
 def perform_tsne(X_data, y_data, perplexities, n_iter=1000, img_name_prefix='t-sne'):
@@ -452,58 +438,3 @@ plt.ylabel("t-SNE Dimension 2")
 plt.legend(title="Regimes")
 plt.grid(True)
 plt.show()
-# %%
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.manifold import TSNE
-from sklearn.preprocessing import StandardScaler
-
-# Step 1: Calculate rolling returns and volatility
-rolling_window = 20  # Example: 20 periods
-crypto_returns['Rolling Returns'] = crypto_returns['bch-usdt'].rolling(rolling_window).mean()
-crypto_returns['Rolling Volatility'] = crypto_returns['bch-usdt'].rolling(rolling_window).std()
-
-# Drop NaN values caused by rolling calculations
-crypto_returns = crypto_returns.dropna()
-
-# Step 2: Define thresholds for volatility
-volatility_threshold_high = crypto_returns['Rolling Volatility'].quantile(0.75)
-volatility_threshold_low = crypto_returns['Rolling Volatility'].quantile(0.25)
-
-# Step 3: Assign regimes
-def assign_regime(row):
-    if row['Rolling Returns'] > 0 and row['Rolling Volatility'] > volatility_threshold_high:
-        return 'Bullish/High Volatility'
-    elif row['Rolling Returns'] > 0 and row['Rolling Volatility'] <= volatility_threshold_low:
-        return 'Bullish/Low Volatility'
-    elif row['Rolling Returns'] <= 0 and row['Rolling Volatility'] > volatility_threshold_high:
-        return 'Bearish/High Volatility'
-    elif row['Rolling Returns'] <= 0 and row['Rolling Volatility'] <= volatility_threshold_low:
-        return 'Bearish/Low Volatility'
-    else:
-        return 'Neutral'
-
-crypto_returns['Regime'] = crypto_returns.apply(assign_regime, axis=1)
-
-# Step 4: Normalize the data for t-SNE
-scaler = StandardScaler()
-crypto_returns_scaled = scaler.fit_transform(crypto_returns[['Rolling Returns', 'Rolling Volatility']])
-
-# Step 5: Perform t-SNE
-print("Performing t-SNE...")
-tsne = TSNE(n_components=2, perplexity=30, n_iter=1000, random_state=42, verbose=1)
-crypto_tsne = tsne.fit_transform(crypto_returns_scaled)
-
-# Step 6: Visualize the regimes
-print("Visualizing the regimes...")
-plt.figure(figsize=(12, 8))
-sns.scatterplot(x=crypto_tsne[:, 0], y=crypto_tsne[:, 1], hue=crypto_returns['Regime'], palette="tab10", s=50)
-plt.title("t-SNE Visualization with Regimes")
-plt.xlabel("t-SNE Dimension 1")
-plt.ylabel("t-SNE Dimension 2")
-plt.legend(title="Regimes")
-plt.grid(True)
-plt.show()
-# %%
