@@ -210,10 +210,10 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 	logging.info(f'Making predictions for {len(X_test)} rows')
 	y_pred = clf.predict(X_test)
 
-	y_probs = clf.predict_proba(X_test)
-	save_clf_results(combination, clf, list(X_train.columns), y_train, y_test, y_probs, y_pred)
+	# y_probs = clf.predict_proba(X_test)
+	# save_clf_results(combination, clf, list(X_train.columns), y_train, y_test, y_probs, y_pred)
 	# del y_probs
-	sys.exit(0)
+	# sys.exit(0)
 
 	del train, X_train, X_test, y_train, y_test
 	# del val, train, X_train, X_val, X_test, y_train, y_val, y_test
