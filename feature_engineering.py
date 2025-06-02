@@ -130,10 +130,10 @@ def add_detected_jumps(feats_df: pd.DataFrame, combination: tuple[str, str], end
 	local_feats_df = feats_df.copy()
 
 	train_days = (end_train_date - local_feats_df.index[0]).days
-	resample_frequencies = ['1H', '6H', '12H', '24H', '48H']
-	volatility_windows_days = [int(w) for w in np.geomspace(90, train_days, 5)]
-	# resample_frequencies = ['30min']
-	# volatility_windows_days = [train_days]
+	# resample_frequencies = ['1H', '6H', '12H', '24H', '48H']
+	# volatility_windows_days = [int(w) for w in np.geomspace(90, train_days, 5)]
+	resample_frequencies = ['6H', '48H']
+	volatility_windows_days = [train_days]
 
 	for freq in resample_frequencies:
 		for vol_window in volatility_windows_days:
