@@ -151,26 +151,26 @@ class Backtester:
 		last_date = prices_df.index[-1]
 		current_bound_date = prices_df.index[0] - timedelta(seconds=10)  # To make sure that the first row is included
 		val_test_days = trade_window_days / (1 - val_test_split_coef)
+		val_days = val_test_days - trade_window_days
 
 		# Here we assume that wf_window_days >> val_test_days
 		train_window = timedelta(days=train_window_days)
-		trade_window = timedelta(days=trade_window_days)
-		val_test_delta = timedelta(days=val_test_days)
-		test_delta = trade_window
+		val_window = timedelta(days=val_days)
+		test_window = timedelta(days=trade_window_days)
 
 		date_bounds = []
 		# Iterate until there is not enough data to have at least val_test_days for train and val_test_days for val and test
-		while current_bound_date + train_window - test_delta <= last_date:
+		while current_bound_date + train_window + val_window <= last_date:
 
-			if current_bound_date + train_window <= last_date:  # The whole wf_window fits before last_date
-				date_bounds.append((current_bound_date, current_bound_date + train_window - val_test_delta, current_bound_date + train_window - test_delta,
-									current_bound_date + train_window))
+			if current_bound_date + train_window + val_window + test_window <= last_date:  # The whole wf_window fits before last_date
+				date_bounds.append((current_bound_date, current_bound_date + train_window, current_bound_date + train_window + val_window,
+									current_bound_date + train_window + val_window + test_window))
 			else:  # Only 2 val_test_days windows fit before last_date
 				date_bounds.append((
-						current_bound_date, current_bound_date + train_window - val_test_delta, current_bound_date + train_window - test_delta, last_date))
+						current_bound_date, current_bound_date + train_window, current_bound_date + train_window + val_window, last_date))
 				break
 
-			current_bound_date = current_bound_date + trade_window
+			current_bound_date = current_bound_date + test_window
 
 		return date_bounds
 

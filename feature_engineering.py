@@ -4,7 +4,10 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 from catboost import CatBoostRegressor
+from ccxt.static_dependencies.toolz import frequencies
 from hurst import compute_Hc
+
+from jump_detection import DetectResampledJumps, FillJumpsDecreasing, MergeJumps
 # from pmdarima.arima import auto_arima, ADFTest
 
 from utils.helpers import DaysWindowToPeriods
@@ -123,6 +126,32 @@ def add_spread_above_pred(feats_df: pd.DataFrame):
 
 	return local_feats_df
 
+def add_detected_jumps(feats_df: pd.DataFrame, combination: tuple[str, str], end_train_date: datetime):
+	local_feats_df = feats_df.copy()
+
+	train_days = (end_train_date - local_feats_df.index[0]).days
+	resample_frequencies = ['1H', '6H', '12H', '24H', '48H']
+	volatility_windows_days = [int(w) for w in np.geomspace(90, train_days, 5)]
+	# resample_frequencies = ['30min']
+	# volatility_windows_days = [train_days]
+
+	for freq in resample_frequencies:
+		for vol_window in volatility_windows_days:
+			jumps_df = DetectResampledJumps(local_feats_df['spread'], combination, freq, vol_window, train_days)
+
+			jumps_col = [col for col in jumps_df.columns if 'signed' not in col][0]
+			signed_jumps_col = [col for col in jumps_df.columns if 'signed' in col][0]
+
+			local_feats_df = MergeJumps(local_feats_df, jumps_df)
+
+			local_feats_df[signed_jumps_col].ffill(inplace=True)
+			local_feats_df[signed_jumps_col].fillna(0, inplace=True)
+
+			local_feats_df[jumps_col] = FillJumpsDecreasing(local_feats_df[jumps_col].to_numpy())
+			local_feats_df[jumps_col].fillna(0, inplace=True)
+
+	return local_feats_df
+
 def clean(feats_df: pd.DataFrame):
 	df = feats_df.copy()
 
@@ -148,6 +177,9 @@ def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_wi
 		data = add_rolling_hurst(data, window_periods)
 
 	data = add_spread_above_pred(data)
+
+	data = add_detected_jumps(data, combination, end_train_date)
+
 	data = clean(data)
 
 	return data

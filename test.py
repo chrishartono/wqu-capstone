@@ -46,9 +46,9 @@ def manual_test(prices_df: pd.DataFrame):
 def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_val_net_return: float, min_val_num_trades: int):
 
 	all_possible_combinations = CreateAllPossibleCombinations(prices_df)
-	# np.random.shuffle(all_possible_combinations)
+	np.random.shuffle(all_possible_combinations)
 
-	# all_possible_combinations_slice = all_possible_combinations[:1000]
+	all_possible_combinations_slice = all_possible_combinations[:100]
 	# all_possible_combinations_slice = [('close_vet-usdt', 'close_sc-usdt')]
 
 	# all_possible_combinations_slice = [('close_algo-usdt', 'close_reef-usdt')]
@@ -67,7 +67,7 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 							trade_window_days=trade_window_days,
 							val_test_split_coef=0.5,
 							features_rolling_windows_days_list=[1, 5, 10],
-							all_possible_combinations=all_possible_combinations,
+							all_possible_combinations=all_possible_combinations_slice,
 							comovement_detection_type=ComovementType.GC_MI,
 							use_parallelization=True,
 							combination_limit=1000,
@@ -172,6 +172,9 @@ if __name__ == '__main__':
 
 	# manual_test(prices_df)
 	# SetLogging(f'logs/wqu_capstone_{now_str}.log')
-	# backtest_test()
+
+	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
+	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
+	backtest_test(prices_df, num_good_combs_to_choose=1, min_val_net_return=0.1, min_val_num_trades=30)
 	# logging.info('Finished')
-	run_consecutive_backtests()
+	# run_consecutive_backtests()
