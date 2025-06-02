@@ -140,11 +140,13 @@ def ml_quality_test(prices_df: pd.DataFrame, train_window_days, trade_window_day
 def run_consecutive_ml_quality_tests():
 	now_str = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
 
-	train_window_days_list = [720, 360, 180, 90, 50]
+	# train_window_days_list = [720, 360, 180, 90, 50]
+	# Due to changes in date_bounds creation. Previously test and val windows were subtracted from train. Now added. Thus, previous 720 now is effectively 660.
+	train_window_days_list = [660, 720]
 	trade_window_days = 30
 	num_good_combs_to_choose = 200
 	desired_num_samples = 5
-	target_window_list = [30]
+	target_window_list = [5, 20]
 	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 
 	for target_window in target_window_list:
@@ -165,7 +167,7 @@ if __name__ == '__main__':
 	os.makedirs('logs', exist_ok=True)
 	# parallel_logging(f'logs/wqu_capstone_{now_str}.log')
 
-	# run_consecutive_ml_quality_tests()
+	run_consecutive_ml_quality_tests()
 	# TODO: Test run
 	# prices_df = prices_df[(prices_df.index >= '2023-02-01') & (prices_df.index <= '2024-07-01')]
 	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
@@ -173,8 +175,8 @@ if __name__ == '__main__':
 	# manual_test(prices_df)
 	# SetLogging(f'logs/wqu_capstone_{now_str}.log')
 
-	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
-	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
-	backtest_test(prices_df, num_good_combs_to_choose=1, min_val_net_return=0.1, min_val_num_trades=30)
+	# prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
+	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
+	# backtest_test(prices_df, num_good_combs_to_choose=1, min_val_net_return=0.1, min_val_num_trades=30)
 	# logging.info('Finished')
 	# run_consecutive_backtests()
