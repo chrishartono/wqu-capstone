@@ -23,17 +23,33 @@ def add_basic_features(feats_df: pd.DataFrame, combination: tuple[str, str]):
 		for col_ret in columns_for_returns:
 			df[f'{col_ret}_{pair}_returns'] = df[f'{col_ret}_{pair}'].pct_change().fillna(0)
 
+		# NOTE: Log-scaled price and volume
+		# NOTE: Remove this if not helpful
+		df[f'high_{pair}'] = np.log(df[f'high_{pair}'])
+		df[f'low_{pair}'] = np.log(df[f'low_{pair}'])
+		df[f'open_{pair}'] = np.log(df[f'open_{pair}'])
+		df[f'volume_{pair}'] = np.log(df[f'volume_{pair}'])
+
+	# NOTE: Additional features
+	# NOTE: Remove this if not helpful
+	for col_ret in columns_for_returns:
+		p1, p2 = pairs
+		df[f'{col_ret}_returns_diff'] = df[f'{col_ret}_{p1}_returns'] - df[f'{col_ret}_{p2}_returns']
+
 	# Can't use pct_change here because spread may have negative values
 	df['spread_returns'] = (df['spread'] - df['spread'].shift(1)) / abs(df['spread'].shift(1))
+	# NOTE: Additional features
+	# NOTE: Remove this if not helpful
+	df['spread_ret_volume_ret_ratio'] = df['spread_returns'] / df['volume_returns_diff'] 
 	df.replace([np.inf, -np.inf], np.nan, inplace=True)
 	df.fillna(0, inplace=True)
 
 	return df
 
-def add_zscores(feats_df: pd.DataFrame, window_period: int):
+def add_zscores(feats_df: pd.DataFrame, window_period: int, base_features: list[str]):
 	data = feats_df.copy()
 
-	for col in data.columns:
+	for col in base_features:
 		zscore_colname = f'{col}_zscore_{window_period}'
 		zscore_extrem_colname = f'{col}_zscore_extrem_{window_period}'
 
@@ -64,6 +80,19 @@ def add_rolling_hurst(feats_df: pd.DataFrame, window_period: int):
 			data[hurst_colname] = 0.5
 
 		data.drop([f'{col}_shifted'], axis=1, inplace=True)
+
+	return data
+
+def add_rolling_stats(feats_df: pd.DataFrame, combination: tuple[str, str], window_period: int):
+	data = feats_df.copy()
+
+	cols = ['spread', 'volume_returns_diff', 'close_returns_diff',
+			'close-open_returns_diff', 'high-low_returns_diff']
+	
+	for col in cols:
+		data[f'{col}_std'] = data[col].rolling(window=window_period).std()
+		data[f'{col}_mean'] = data[col].rolling(window=window_period).mean()
+		data[f'{col}_skew'] = data[col].rolling(window=window_period).skew()
 
 	return data
 
@@ -103,7 +132,15 @@ def add_catboost_spread_prediction(feats_df: pd.DataFrame, end_train_date: datet
 	X_test = test.drop(columns=['spread'], axis=1)
 	y_train = train['spread']
 
-	catboost_hyperparameters = {'depth': 3, 'iterations': 100, 'learning_rate': 0.1, 'thread_count':1}
+	catboost_hyperparameters = {
+		'depth': 3, 
+		'iterations': 100, 
+		'learning_rate': 0.1, 
+		'thread_count':1,
+		'random_state': 233,
+		'rsm': 0.8,
+		'reg_lambda': 0.5
+	}
 	clf = CatBoostRegressor(verbose=0, **catboost_hyperparameters)
 	clf.fit(X=X_train, y=y_train)
 
@@ -142,10 +179,14 @@ def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_wi
 	data = add_basic_features(data, combination)
 	data = add_catboost_spread_prediction(data, end_train_date)
 
+	base_features = data.columns.tolist()
 	for rolling_window_days in rolling_windows_days_list:
 		window_periods = DaysWindowToPeriods(data, rolling_window_days)
-		data = add_zscores(data, window_periods)
+		data = add_zscores(data, window_periods, base_features=base_features)
 		data = add_rolling_hurst(data, window_periods)
+		# NOTE: Additional features
+		# NOTE: Remove this if not helpful
+		data = add_rolling_stats(data, combination, window_periods)
 
 	data = add_spread_above_pred(data)
 	data = clean(data)
