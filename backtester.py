@@ -54,7 +54,8 @@ class Backtester:
 				 close_on_no_signal: bool):
 
 		self.__backtest_id = str(uuid.uuid4())
-		logging.info(f'Backtest_id={self.__backtest_id}')
+		logging.info(f'Backtest_id={self.__backtest_id} {train_window_days=} {trade_window_days=} {min_val_net_return=} {min_val_num_trades=} '
+					 f'{num_good_combs_to_choose=} {target_params=} {close_on_no_signal=}')
 
 		self.__prices_df = prices_df
 		self.__train_window_days = train_window_days
@@ -105,34 +106,40 @@ class Backtester:
 
 
 	@staticmethod
-	def __make_date_bounds_no_val(prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int):
+	def __make_date_bounds(self, prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int, val_test_split_coef: float):
 		"""
 		This function creates boundaries for data train/test slices for walkforward backtest in format (start_train_date, end_train_date, end_test_date)
 
 		:param prices_df: Pandas DataFrame with 2 columns (one for each time series).
 		:param train_window_days: Number of days for train set.
 		:param trade_window_days: Number of days for test set.
+		:param val_test_split_coef: Determines VAL set size to VAL+TEST combined set size
 		:return: List of tuples of datetime values for boundaries.
 		"""
 
 		last_date = prices_df.index[-1]
+		current_bound_date = prices_df.index[0] - timedelta(seconds=10)  # To make sure that the first row is included
+		val_test_days = trade_window_days / (1 - val_test_split_coef)
+		val_days = val_test_days - trade_window_days
 
-		# To make sure that the first row is included
-		current_bound_date = prices_df.index[0] - timedelta(seconds=10)
-
+		# Here we assume that wf_window_days >> val_test_days
 		train_window = timedelta(days=train_window_days)
-		trade_window = timedelta(days=trade_window_days)
+		val_window = timedelta(days=val_days)
+		test_window = timedelta(days=trade_window_days)
 
 		date_bounds = []
+		# Iterate until there is not enough data to have at least val_test_days for train and val_test_days for val and test
+		while current_bound_date + train_window + val_window <= last_date:
 
-		while current_bound_date + train_window <= last_date:
+			if current_bound_date + train_window + val_window + test_window <= last_date:  # The whole wf_window fits before last_date
+				date_bounds.append((current_bound_date, current_bound_date + train_window, current_bound_date + train_window + val_window,
+									current_bound_date + train_window + val_window + test_window))
+			else:  # Only 2 val_test_days windows fit before last_date
+				date_bounds.append((
+						current_bound_date, current_bound_date + train_window, current_bound_date + train_window + val_window, last_date))
+				break
 
-			if current_bound_date + train_window + trade_window > last_date:
-				date_bounds.append((current_bound_date, current_bound_date + train_window, last_date))
-			else:
-				date_bounds.append((current_bound_date, current_bound_date + train_window, current_bound_date + train_window + trade_window))
-
-			current_bound_date = current_bound_date + trade_window
+			current_bound_date = current_bound_date + test_window
 
 		return date_bounds
 
