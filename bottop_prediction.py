@@ -290,8 +290,6 @@ def ResearchTrain(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, co
 		metrics[f'f1_default_{i}'] = classes_default_f1_scores[i]
 		metrics[f'f1_tuned_{i}'] = classes_tuned_f1_scores[i]
 
-	# logging.info(metrics)
-	# sys.exit(0)
 	return metrics
 
 

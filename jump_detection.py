@@ -328,21 +328,26 @@ def days_window_to_periods(data: pd.DataFrame, window_days: int):
 	return window_periods
 
 
-def DetectResampledJumps(spread_series: pd.Series, combination: tuple[str, str], resample_frequency: str, volatility_window_days: int, train_days: int):
-	spread = spread_series.resample(resample_frequency, label='right', closed='right').last()
-	spread = spread + abs(spread.min()) + 1
+def DetectResampledJumps(col_series: pd.Series, column_name: str, resample_frequency: str, volatility_window_days: int, train_days: int):
+	column = col_series.resample(resample_frequency, label='right', closed='right').last()
 
-	returns = spread.pct_change().fillna(0)
+	col_minvalue = column.min()
+
+	# This is done to avoid crossing zero and as a result possible very high return values when actual values are close to 0
+	if col_minvalue < 0:
+		column = column + abs(column.min()) + 1
+
+	returns = column.pct_change().fillna(0)
 	returns_ar = returns.to_numpy()
 
-	train_split_idx = days_window_to_periods(spread, train_days)
-	volatility_window = days_window_to_periods(spread, volatility_window_days)
+	train_split_idx = days_window_to_periods(column, train_days)
+	volatility_window = days_window_to_periods(column, volatility_window_days)
 
 	jumps = find_jumps_incremental(returns_ar, train_split_idx, volatility_window)
 	signed_jumps = jumps * np.sign(returns_ar)
 
-	column_prefix = f'{combination[0]}_{combination[1]}_{resample_frequency}_{volatility_window_days}'
-	jumps_df = pd.DataFrame(jumps.astype(int), columns=[f'{column_prefix}_jumps'], index=spread.index)
+	column_prefix = f'{column_name}_{resample_frequency}_{volatility_window_days}'
+	jumps_df = pd.DataFrame(jumps.astype(int), columns=[f'{column_prefix}_jumps'], index=column.index)
 	jumps_df[f'{column_prefix}_signed_jumps'] = signed_jumps
 
 	return jumps_df

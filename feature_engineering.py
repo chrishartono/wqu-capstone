@@ -134,27 +134,36 @@ def add_detected_jumps(feats_df: pd.DataFrame, combination: tuple[str, str], end
 	local_feats_df = feats_df.copy()
 
 	train_days = (end_train_date - local_feats_df.index[0]).days
-	resample_frequencies = ['1H', '6H', '12H', '24H', '48H']
-	volatility_windows_days = [int(w) for w in np.geomspace(90, train_days, 5)]
+	column_parts_for_jumps = ['close_', 'volume_', 'close-open_', 'high-low_', 'spread']
+	column_exceptions_for_jumps = ['zscore', 'prediction', 'return', 'hurst']
+	resample_frequencies = ['1H', '6H', '24H']
+	volatility_windows_days = [int(w) for w in np.geomspace(60, train_days, 3)]
 	# resample_frequencies = ['6H', '48H']
 	# volatility_windows_days = [train_days]
 
-	for freq in resample_frequencies:
-		for vol_window in volatility_windows_days:
-			jumps_df = DetectResampledJumps(local_feats_df['spread'], combination, freq, vol_window, train_days)
+	columns_for_jumps = [col for col in feats_df if
+						 any(part in col for part in column_parts_for_jumps) and
+						 all(part not in col for part in column_exceptions_for_jumps)]
+	categorical_features = []
+	for col in columns_for_jumps:
+		for freq in resample_frequencies:
+			for vol_window in volatility_windows_days:
+				jumps_df = DetectResampledJumps(local_feats_df[col], col, freq, vol_window, train_days)
 
-			jumps_col = [col for col in jumps_df.columns if 'signed' not in col][0]
-			signed_jumps_col = [col for col in jumps_df.columns if 'signed' in col][0]
+				jumps_col = [col for col in jumps_df.columns if 'signed' not in col][0]
+				signed_jumps_col = [col for col in jumps_df.columns if 'signed' in col][0]
 
-			local_feats_df = MergeJumps(local_feats_df, jumps_df)
+				local_feats_df = MergeJumps(local_feats_df, jumps_df)
 
-			local_feats_df[signed_jumps_col].ffill(inplace=True)
-			local_feats_df[signed_jumps_col].fillna(0, inplace=True)
+				local_feats_df[signed_jumps_col].ffill(inplace=True)
+				local_feats_df[signed_jumps_col].fillna(0, inplace=True)
 
-			local_feats_df[jumps_col] = FillJumpsDecreasing(local_feats_df[jumps_col].to_numpy())
-			local_feats_df[jumps_col].fillna(0, inplace=True)
+				local_feats_df[jumps_col] = FillJumpsDecreasing(local_feats_df[jumps_col].to_numpy())
+				local_feats_df[jumps_col].fillna(0, inplace=True)
 
-	return local_feats_df
+				categorical_features.append(signed_jumps_col)
+
+	return local_feats_df, categorical_features
 
 def clean(feats_df: pd.DataFrame):
 	df = feats_df.copy()
@@ -184,13 +193,18 @@ def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_wi
 
 		all_categorical_features.extend(zscore_categorical_features)
 
+	# Passing already created categorical features to catboost spread prediction
 	data = add_catboost_spread_prediction(data, end_train_date, all_categorical_features)
+
+	data, jump_categorical_features = add_detected_jumps(data, combination, end_train_date)
+	all_categorical_features.extend(jump_categorical_features)
 
 	data, catboostpred_categorical_features = add_spread_above_pred(data)
 	all_categorical_features.extend(catboostpred_categorical_features)
 
-	data = add_detected_jumps(data, combination, end_train_date)
-
 	data = clean(data)
+
+	convert_dict = {col: 'int' for col in all_categorical_features}
+	data = data.astype(convert_dict)
 
 	return data, all_categorical_features

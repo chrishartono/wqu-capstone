@@ -46,9 +46,9 @@ def manual_test(prices_df: pd.DataFrame):
 def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_val_net_return: float, min_val_num_trades: int):
 
 	all_possible_combinations = CreateAllPossibleCombinations(prices_df)
-	np.random.shuffle(all_possible_combinations)
+	# np.random.shuffle(all_possible_combinations)
+	# all_possible_combinations_slice = all_possible_combinations[:100]
 
-	all_possible_combinations_slice = all_possible_combinations[:100]
 	# all_possible_combinations_slice = [('close_vet-usdt', 'close_sc-usdt')]
 
 	# all_possible_combinations_slice = [('close_algo-usdt', 'close_reef-usdt')]
@@ -58,18 +58,18 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 	# 								   ('close_badger-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_celo-usdt'), ('close_rei-usdt', 'close_ach-usdt')]
 	trade_window_days = 30
 	# train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
-	train_window_days = 60
+	train_window_days = 720
 	# target_params = {'numNeighbours': 10, 'rolling_window_days': 10}
 	target_params = {'look_ahead_days': 5, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
 	backtester = Backtester(prices_df=prices_df,
 							train_window_days=train_window_days,
 							ml_val_window_days=trade_window_days,
 							trade_window_days=trade_window_days,
-							val_test_split_coef=0.5,
+							val_test_split_coef=0.84,
 							features_rolling_windows_days_list=[1, 5, 10],
-							all_possible_combinations=all_possible_combinations_slice,
+							all_possible_combinations=all_possible_combinations,
 							comovement_detection_type=ComovementType.GC_MI,
-							use_parallelization=True,
+							use_parallelization=False,
 							combination_limit=1000,
 							trade_limit=1000,
 							risk_free_rate=0,
@@ -85,9 +85,9 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 
 def run_consecutive_backtests():
 	trade_window_days = 30
-	num_good_combs_to_choose_list = [200, 300]
-	min_val_net_return_list = [0.1, 0.3]
-	min_val_num_trades_list = [trade_window_days, trade_window_days * 5]
+	num_good_combs_to_choose_list = [300]
+	min_val_net_return_list = [0.3]
+	min_val_num_trades_list = [60]
 
 	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
@@ -110,8 +110,8 @@ def run_consecutive_backtests():
 
 def ml_quality_test(prices_df: pd.DataFrame, train_window_days, trade_window_days, num_good_combs_to_choose, desired_num_samples, target_window):
 	all_possible_combinations = CreateAllPossibleCombinations(prices_df)
-	np.random.shuffle(all_possible_combinations)
-	all_possible_combinations_slice = all_possible_combinations[:100]
+	# np.random.shuffle(all_possible_combinations)
+	# all_possible_combinations_slice = all_possible_combinations[:100]
 
 	target_params = {'look_ahead_days': target_window, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
 	backtester = Backtester(prices_df=prices_df,
@@ -120,7 +120,7 @@ def ml_quality_test(prices_df: pd.DataFrame, train_window_days, trade_window_day
 							trade_window_days=trade_window_days,
 							val_test_split_coef=0.5,
 							features_rolling_windows_days_list=[1, 5, 10],
-							all_possible_combinations=all_possible_combinations_slice,
+							all_possible_combinations=all_possible_combinations,
 							comovement_detection_type=ComovementType.GC_MI,
 							use_parallelization=True,
 							combination_limit=1000,
@@ -144,14 +144,14 @@ def run_consecutive_ml_quality_tests():
 	# Due to changes in date_bounds creation. Previously test and val windows were subtracted from train. Now added. Thus, previous 720 now is effectively 660.
 	train_window_days_list = [660, 720]
 	trade_window_days = 30
-	num_good_combs_to_choose = 1
+	num_good_combs_to_choose = 200
 	desired_num_samples = 5
 	target_window_list = [5, 20]
 	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 
 	for target_window in target_window_list:
 		for train_window_days in train_window_days_list:
-			log_file_name = (f'logs/wqu_capstone_{now_str}_trn{train_window_days}_trd{trade_window_days}_'
+			log_file_name = (f'logs/ml_test_withjump_{now_str}_trn{train_window_days}_trd{trade_window_days}_'
 							 f'ncombs{num_good_combs_to_choose}_dsmpl{desired_num_samples}_tarwin{target_window}.log')
 			if not IsLoggingConfigured():
 				SetLogging(log_file_name)
@@ -167,7 +167,7 @@ if __name__ == '__main__':
 	os.makedirs('logs', exist_ok=True)
 	# parallel_logging(f'logs/wqu_capstone_{now_str}.log')
 
-	run_consecutive_ml_quality_tests()
+	# run_consecutive_ml_quality_tests()
 	# TODO: Test run
 	# prices_df = prices_df[(prices_df.index >= '2023-02-01') & (prices_df.index <= '2024-07-01')]
 	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
@@ -179,4 +179,4 @@ if __name__ == '__main__':
 	# prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
 	# backtest_test(prices_df, num_good_combs_to_choose=1, min_val_net_return=0.1, min_val_num_trades=30)
-	# run_consecutive_backtests()
+	run_consecutive_backtests()
