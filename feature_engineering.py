@@ -176,7 +176,8 @@ def clean(feats_df: pd.DataFrame):
 
 	return df
 
-def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_windows_days_list: list[int], end_train_date: datetime) -> pd.DataFrame:
+def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_windows_days_list: list[int], end_train_date: datetime,
+				use_jump_features: bool) -> pd.DataFrame:
 	# logging.info(f'Start adding features for {combination}')
 
 	data = feats_df.copy()
@@ -196,8 +197,9 @@ def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_wi
 	# Passing already created categorical features to catboost spread prediction
 	data = add_catboost_spread_prediction(data, end_train_date, all_categorical_features)
 
-	data, jump_categorical_features = add_detected_jumps(data, combination, end_train_date)
-	all_categorical_features.extend(jump_categorical_features)
+	if use_jump_features:
+		data, jump_categorical_features = add_detected_jumps(data, combination, end_train_date)
+		all_categorical_features.extend(jump_categorical_features)
 
 	data, catboostpred_categorical_features = add_spread_above_pred(data)
 	all_categorical_features.extend(catboostpred_categorical_features)

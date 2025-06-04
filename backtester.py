@@ -51,7 +51,8 @@ class Backtester:
 				 use_top_model: TopModelType,
 				 target_type: TargetType,
 				 target_params: dict,
-				 close_on_no_signal: bool):
+				 close_on_no_signal: bool,
+				 use_jump_features: bool):
 
 		self.__backtest_id = str(uuid.uuid4())
 		logging.info(f'Backtest_id={self.__backtest_id} {train_window_days=} {trade_window_days=} {min_val_net_return=} {min_val_num_trades=} '
@@ -84,6 +85,7 @@ class Backtester:
 			raise Exception(f'Unknown target type: {target_type}')
 
 		self.__close_on_no_signal = close_on_no_signal
+		self.__use_jump_features = use_jump_features
 
 		self.__annualized_multiplier = np.sqrt(24 * 365)
 
@@ -145,7 +147,7 @@ class Backtester:
 			data = AddCointCoefSpread(data, combination, coint_vector)
 
 			# logging.info(f'Start adding features for {combination}')
-			data, categorical_features = AddFeatures(data, combination, self.__features_rolling_windows_days_list, end_train_date)
+			data, categorical_features = AddFeatures(data, combination, self.__features_rolling_windows_days_list, end_train_date, self.__use_jump_features)
 
 			# logging.info(f'Start adding target for {combination}')
 			data = self.__AddTargetFunc(data, combination, target_col='spread', resulting_target_column='TARGET', target_params=self.__target_params)
