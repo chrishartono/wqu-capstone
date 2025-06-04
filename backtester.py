@@ -36,7 +36,7 @@ class Backtester:
 				 train_window_days: int,
 				 ml_val_window_days: int,
 				 trade_window_days: int,
-				 val_test_split_coef: float,
+				 val_window_days: int,
 				 features_rolling_windows_days_list: list[int],
 				 all_possible_combinations: list[tuple[str, str]],
 				 comovement_detection_type: ComovementType,
@@ -64,7 +64,7 @@ class Backtester:
 		self.__features_rolling_windows_days_list = features_rolling_windows_days_list
 		self.__all_possible_combinations = all_possible_combinations
 		self.__comovement_type = comovement_detection_type
-		self.__date_bounds = self.__make_date_bounds(prices_df, train_window_days, trade_window_days, val_test_split_coef)
+		self.__date_bounds = self.__make_date_bounds(prices_df, train_window_days, val_window_days, trade_window_days)
 		self.__n_jobs = -1 if use_parallelization else 1
 		self.__combination_limit = combination_limit
 		self.__trade_limit = trade_limit
@@ -105,8 +105,7 @@ class Backtester:
 		return main_path, aggregated_path
 
 
-	@staticmethod
-	def __make_date_bounds(self, prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int, val_test_split_coef: float):
+	def __make_date_bounds(self, prices_df: pd.DataFrame, train_window_days: int, val_window_days: int, trade_window_days: int):
 		"""
 		This function creates boundaries for data train/test slices for walkforward backtest in format (start_train_date, end_train_date, end_test_date)
 
@@ -119,12 +118,9 @@ class Backtester:
 
 		last_date = prices_df.index[-1]
 		current_bound_date = prices_df.index[0] - timedelta(seconds=10)  # To make sure that the first row is included
-		val_test_days = trade_window_days / (1 - val_test_split_coef)
-		val_days = val_test_days - trade_window_days
 
-		# Here we assume that wf_window_days >> val_test_days
 		train_window = timedelta(days=train_window_days)
-		val_window = timedelta(days=val_days)
+		val_window = timedelta(days=val_window_days)
 		test_window = timedelta(days=trade_window_days)
 
 		date_bounds = []
@@ -140,43 +136,6 @@ class Backtester:
 				break
 
 			current_bound_date = current_bound_date + test_window
-
-		return date_bounds
-
-	def __make_date_bounds(self, prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int, val_test_split_coef: float):
-		"""
-		This function creates boundaries for data train/test slices for walkforward backtest in format (start_train_date, end_train_date, end_test_date)
-
-		:param prices_df: Pandas DataFrame with 2 columns (one for each time series).
-		:param train_window_days: Number of days for train set.
-		:param trade_window_days: Number of days for test set.
-		:param val_test_split_coef: Determines VAL set size to VAL+TEST combined set size
-		:return: List of tuples of datetime values for boundaries.
-		"""
-
-		last_date = prices_df.index[-1]
-		current_bound_date = prices_df.index[0] - timedelta(seconds=10)  # To make sure that the first row is included
-		val_test_days = trade_window_days / (1 - val_test_split_coef)
-
-		# Here we assume that wf_window_days >> val_test_days
-		train_window = timedelta(days=train_window_days)
-		trade_window = timedelta(days=trade_window_days)
-		val_test_delta = timedelta(days=val_test_days)
-		test_delta = trade_window
-
-		date_bounds = []
-		# Iterate until there is not enough data to have at least val_test_days for train and val_test_days for val and test
-		while current_bound_date + train_window - test_delta <= last_date:
-
-			if current_bound_date + train_window <= last_date:  # The whole wf_window fits before last_date
-				date_bounds.append((current_bound_date, current_bound_date + train_window - val_test_delta, current_bound_date + train_window - test_delta,
-									current_bound_date + train_window))
-			else:  # Only 2 val_test_days windows fit before last_date
-				date_bounds.append((
-						current_bound_date, current_bound_date + train_window - val_test_delta, current_bound_date + train_window - test_delta, last_date))
-				break
-
-			current_bound_date = current_bound_date + trade_window
 
 		return date_bounds
 
