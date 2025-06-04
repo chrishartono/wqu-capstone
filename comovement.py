@@ -94,7 +94,7 @@ def test_mutual_information(prices_df: pd.DataFrame, combination: tuple[str, str
 	x = prices_df[combination[0]].to_numpy().reshape(-1, 1)
 	y = prices_df[combination[1]].to_numpy()
 	try:
-		score = mutual_info_regression(x, y)[0]
+		score = mutual_info_regression(x, y, random_state=35)[0]
 	except Exception as e:
 		logging.error(e)
 		return False
