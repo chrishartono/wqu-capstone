@@ -181,7 +181,7 @@ def save_clf_results(combination: tuple[str, str],
 	save_feature_importance(combination, clf, columns)
 
 
-def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], val_window_days: int):
+def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], val_window_days: int, categorical_features: list[str]):
 	logging.info(f'Start bottom model training for {combination}')
 
 	# val_window_periods = DaysWindowToPeriods(train, val_window_days)
@@ -203,7 +203,7 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 	LogValueCounts(y_train.unique(), y_train.value_counts(sort=False).values, 'Train', len(y_train))
 
 	# clf = CatBoostClassifier(verbose=0, class_weights=class_weights, **catboost_hyperparameters)
-	clf = CatBoostClassifier(verbose=0, **catboost_hyperparameters)
+	clf = CatBoostClassifier(verbose=0, cat_features=categorical_features, **catboost_hyperparameters)
 	# clf.fit(X=X_train, y=y_train, eval_set=(X_val, y_val), early_stopping_rounds=20)
 	clf.fit(X=X_train, y=y_train)
 
@@ -221,7 +221,7 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 	return y_pred, clf
 
 
-def ResearchTrain(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str]):
+def ResearchTrain(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], categorical_features: list[str]):
 	logging.info(f'Start bottom model training for {combination}')
 
 	X_train = train.drop(columns=['TARGET'])
@@ -234,7 +234,7 @@ def ResearchTrain(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, co
 	tuner = ClassificationThresholdTuner()
 
 	LogValueCounts(y_train.unique(), y_train.value_counts(sort=False).values, 'Train', len(y_train))
-	clf = CatBoostClassifier(verbose=0, **catboost_hyperparameters)
+	clf = CatBoostClassifier(verbose=0, cat_features=categorical_features, **catboost_hyperparameters)
 	clf.fit(X=X_train, y=y_train)
 	# y_pred = clf.predict(X_test)
 	y_val_probs = clf.predict_proba(X_val)
@@ -290,6 +290,8 @@ def ResearchTrain(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, co
 		metrics[f'f1_default_{i}'] = classes_default_f1_scores[i]
 		metrics[f'f1_tuned_{i}'] = classes_tuned_f1_scores[i]
 
+	# logging.info(metrics)
+	# sys.exit(0)
 	return metrics
 
 

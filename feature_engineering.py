@@ -33,6 +33,7 @@ def add_basic_features(feats_df: pd.DataFrame, combination: tuple[str, str]):
 def add_zscores(feats_df: pd.DataFrame, window_period: int, feat_columns: list[str]):
 	data = feats_df.copy()
 
+	categorical_features = []
 	for col in feat_columns:
 		zscore_colname = f'{col}_zscore_{window_period}'
 		zscore_extrem_colname = f'{col}_zscore_extrem_{window_period}'
@@ -47,8 +48,10 @@ def add_zscores(feats_df: pd.DataFrame, window_period: int, feat_columns: list[s
 		data.loc[data[zscore_colname] < data[f'{col}_10q'], zscore_extrem_colname] = -1
 		data.loc[data[zscore_colname] > data[f'{col}_90q'], zscore_extrem_colname] = 1
 
+		categorical_features.append(zscore_extrem_colname)
+
 		data.drop([f'{col}_10q', f'{col}_90q'], axis=1, inplace=True)
-	return data
+	return data, categorical_features
 
 def add_rolling_hurst(feats_df: pd.DataFrame, window_period: int):
 	hurst_columns = ['spread']
@@ -95,7 +98,7 @@ def add_rolling_hurst(feats_df: pd.DataFrame, window_period: int):
 # 								random_state=42,
 # 								n_fits=50)
 
-def add_catboost_spread_prediction(feats_df: pd.DataFrame, end_train_date: datetime):
+def add_catboost_spread_prediction(feats_df: pd.DataFrame, end_train_date: datetime, added_categorical_features: list[str]):
 	train = feats_df.loc[feats_df.index <= end_train_date]
 	test = feats_df[feats_df.index > end_train_date]
 
@@ -103,8 +106,8 @@ def add_catboost_spread_prediction(feats_df: pd.DataFrame, end_train_date: datet
 	X_test = test.drop(columns=['spread'], axis=1)
 	y_train = train['spread']
 
-	catboost_hyperparameters = {'depth': 3, 'iterations': 100, 'learning_rate': 0.1, 'thread_count':1}
-	clf = CatBoostRegressor(verbose=0, **catboost_hyperparameters)
+	catboost_hyperparameters = {'depth': 4, 'iterations': 100, 'learning_rate': 0.1, 'thread_count':1}
+	clf = CatBoostRegressor(verbose=0, cat_features=added_categorical_features, **catboost_hyperparameters)
 	clf.fit(X=X_train, y=y_train)
 
 	train['spread_prediction'] = clf.predict(X_train)
@@ -121,7 +124,9 @@ def add_spread_above_pred(feats_df: pd.DataFrame):
 
 	local_feats_df['spread-spread_prediction_pct'] = (local_feats_df['spread'] - local_feats_df['spread_prediction']) / local_feats_df['spread_prediction']
 
-	return local_feats_df
+	categorical_features = ['spread_above_prediction']
+
+	return local_feats_df, categorical_features
 
 def clean(feats_df: pd.DataFrame):
 	df = feats_df.copy()
@@ -139,16 +144,23 @@ def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_wi
 
 	data = feats_df.copy()
 
+	all_categorical_features = []
+
 	data = add_basic_features(data, combination)
-	data = add_catboost_spread_prediction(data, end_train_date)
 
 	base_features = data.columns.tolist()
 	for rolling_window_days in rolling_windows_days_list:
 		window_periods = DaysWindowToPeriods(data, rolling_window_days)
-		data = add_zscores(data, window_periods, feat_columns=base_features)
+		data, zscore_categorical_features = add_zscores(data, window_periods, feat_columns=base_features)
 		data = add_rolling_hurst(data, window_periods)
 
-	data = add_spread_above_pred(data)
+		all_categorical_features.extend(zscore_categorical_features)
+
+	data = add_catboost_spread_prediction(data, end_train_date, all_categorical_features)
+
+	data, catboostpred_categorical_features = add_spread_above_pred(data)
+	all_categorical_features.extend(catboostpred_categorical_features)
+
 	data = clean(data)
 
-	return data
+	return data, all_categorical_features
