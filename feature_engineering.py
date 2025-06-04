@@ -30,10 +30,10 @@ def add_basic_features(feats_df: pd.DataFrame, combination: tuple[str, str]):
 
 	return df
 
-def add_zscores(feats_df: pd.DataFrame, window_period: int):
+def add_zscores(feats_df: pd.DataFrame, window_period: int, feat_columns: list[str]):
 	data = feats_df.copy()
 
-	for col in data.columns:
+	for col in feat_columns:
 		zscore_colname = f'{col}_zscore_{window_period}'
 		zscore_extrem_colname = f'{col}_zscore_extrem_{window_period}'
 
@@ -142,9 +142,10 @@ def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_wi
 	data = add_basic_features(data, combination)
 	data = add_catboost_spread_prediction(data, end_train_date)
 
+	base_features = data.columns.tolist()
 	for rolling_window_days in rolling_windows_days_list:
 		window_periods = DaysWindowToPeriods(data, rolling_window_days)
-		data = add_zscores(data, window_periods)
+		data = add_zscores(data, window_periods, feat_columns=base_features)
 		data = add_rolling_hurst(data, window_periods)
 
 	data = add_spread_above_pred(data)
