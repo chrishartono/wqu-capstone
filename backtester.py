@@ -186,7 +186,7 @@ class Backtester:
 			data = AddCointCoefSpread(data, combination, coint_vector)
 
 			# logging.info(f'Start adding features for {combination}')
-			data = AddFeatures(data, combination, self.__features_rolling_windows_days_list, end_train_date)
+			data, categorical_features = AddFeatures(data, combination, self.__features_rolling_windows_days_list, end_train_date)
 
 			# logging.info(f'Start adding target for {combination}')
 			data = self.__AddTargetFunc(data, combination, target_col='spread', resulting_target_column='TARGET', target_params=self.__target_params)
@@ -196,10 +196,10 @@ class Backtester:
 			logging.exception(f'Error adding features for {combination}')
 			del data
 			gc.collect()
-			return None, combination, coint_vector
+			return None, combination, coint_vector, None
 
 		gc.collect()
-		return data, combination, coint_vector
+		return data, combination, coint_vector, categorical_features
 
 	def __prepare_all_combination_datas(self, good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]],
 										data: pd.DataFrame,
@@ -639,12 +639,12 @@ class Backtester:
 
 	def __get_val_metrics(self, data_tuples, start_date: datetime, end_train_date: datetime, end_val_date: datetime, end_test_date: datetime):
 		val_comb_metrics_tups = []
-		for comb_data, combination, coint_vector in data_tuples:
+		for comb_data, combination, coint_vector, categorical_features in data_tuples:
 			comb_train = comb_data[(comb_data.index > start_date) & (comb_data.index <= end_train_date)]
 			comb_val = comb_data[(comb_data.index > end_train_date) & (comb_data.index <= end_val_date)]
 			comb_test = comb_data[(comb_data.index > end_val_date) & (comb_data.index <= end_test_date)]
 
-			preds, model = Train(comb_train, comb_val, combination, self.__ml_val_window_days)
+			preds, model = Train(comb_train, comb_val, combination, self.__ml_val_window_days, categorical_features)
 			stats_df, val_metrics = self.__trading_logic(combination, comb_val, preds, coint_vector)
 			del stats_df
 
@@ -775,14 +775,14 @@ class Backtester:
 			data_tuples = self.__prepare_all_combination_datas(good_combinations, df_slice, end_train_date)
 			if not data_tuples: continue
 
-			for j, (comb_data, combination, coint_vector) in enumerate(data_tuples):
+			for j, (comb_data, combination, coint_vector, categorical_features) in enumerate(data_tuples):
 				logging.info(f'Starting combination {j} {combination} out of {len(data_tuples)}')
 				comb_train = comb_data[comb_data.index <= end_train_date]
 				comb_val = comb_data[(comb_data.index > end_train_date) & (comb_data.index <= end_val_date)]
 				comb_test =  comb_data[comb_data.index > end_val_date]
 
 				try:
-					metrics = ResearchTrain(comb_train, comb_val, comb_test, combination)
+					metrics = ResearchTrain(comb_train, comb_val, comb_test, combination, categorical_features)
 				except Exception as e:
 					logging.error(f'{combination} train failed with exception: {e}')
 					continue
