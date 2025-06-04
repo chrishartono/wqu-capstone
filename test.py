@@ -55,17 +55,19 @@ def backtest_test(prices_df: pd.DataFrame):
 	# all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt'), ('close_troy-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_clv-usdt'),
 	# 								   ('close_rei-usdt', 'close_algo-usdt'), ('close_voxel-usdt', 'close_algo-usdt'), ('close_amp-usdt', 'close_bico-usdt'),
 	# 								   ('close_badger-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_celo-usdt'), ('close_rei-usdt', 'close_ach-usdt')]
-	trade_window_days = 30
+	trade_window_days = 30 # NOTE: 10 (10%)
 	# train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
-	train_window_days = 360
+	train_window_days = 360 # NOTE: 100 (80%)
 	# target_params = {'numNeighbours': 10, 'rolling_window_days': 10}
+	# NOTE: best so far
+	# NOTE: target_params = {'look_ahead_days': 2, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
 	target_params = {'look_ahead_days': 20, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
 	backtester = Backtester(prices_df=prices_df,
 							train_window_days=train_window_days,
 							ml_val_window_days=trade_window_days,
 							trade_window_days=trade_window_days,
 							val_test_split_coef=0.5,
-							features_rolling_windows_days_list=[1, 5, 10],
+							features_rolling_windows_days_list=[1, 5, 10], # [1, 2, 3]
 							all_possible_combinations=all_possible_combinations,
 							comovement_detection_type=ComovementType.GC_MI,
 							use_parallelization=True,
