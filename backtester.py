@@ -52,7 +52,8 @@ class Backtester:
 				 target_type: TargetType,
 				 target_params: dict,
 				 close_on_no_signal: bool,
-				 use_jump_features: bool):
+				 use_jump_features: bool,
+				 reference_prices_column: str):
 
 		self.__backtest_id = str(uuid.uuid4())
 		logging.info(f'Backtest_id={self.__backtest_id} {train_window_days=} {trade_window_days=} {min_val_net_return=} {min_val_num_trades=} '
@@ -86,6 +87,7 @@ class Backtester:
 
 		self.__close_on_no_signal = close_on_no_signal
 		self.__use_jump_features = use_jump_features
+		self.__reference_prices_column = reference_prices_column
 
 		self.__annualized_multiplier = np.sqrt(24 * 365)
 
@@ -141,13 +143,23 @@ class Backtester:
 
 		return date_bounds
 
-	def prepare_combination_data(self, data: pd.DataFrame, combination: tuple[str, str], coint_vector: PhillipsOuliarisTestResults, end_train_date: datetime):
+	def prepare_combination_data(self,
+								 data: pd.DataFrame,
+								 combination: tuple[str, str],
+								 coint_vector: PhillipsOuliarisTestResults,
+								 end_train_date: datetime,
+								 copula_reference_prices: pd.DataFrame):
 		try:
 			# logging.info(f'Start adding spread for {combination}')
 			data = AddCointCoefSpread(data, combination, coint_vector)
 
 			# logging.info(f'Start adding features for {combination}')
-			data, categorical_features = AddFeatures(data, combination, self.__features_rolling_windows_days_list, end_train_date, self.__use_jump_features)
+			data, categorical_features = AddFeatures(data,
+													 combination,
+													 self.__features_rolling_windows_days_list,
+													 end_train_date,
+													 self.__use_jump_features,
+													 copula_reference_prices)
 
 			# logging.info(f'Start adding target for {combination}')
 			data = self.__AddTargetFunc(data, combination, target_col='spread', resulting_target_column='TARGET', target_params=self.__target_params)
@@ -173,7 +185,7 @@ class Backtester:
 			pair1 = comb[0].split('_')[1]
 			pair2 = comb[1].split('_')[1]
 			comb_columns = [col for col in data.columns if pair1 in col or pair2 in col]
-			params.append((data[comb_columns], comb, coint_vector, end_train_date))
+			params.append((data[comb_columns], comb, coint_vector, end_train_date, data[self.__reference_prices_column].to_frame()))
 
 		all_results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
 					   (delayed(self.prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc=f"Train data preparations:")))

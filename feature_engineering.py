@@ -6,6 +6,7 @@ import pandas as pd
 from catboost import CatBoostRegressor
 from hurst import compute_Hc
 
+from copula import CalcCopulaSignals, FitCopula
 from jump_detection import DetectResampledJumps, FillJumpsDecreasing, MergeJumps
 # from pmdarima.arima import auto_arima, ADFTest
 
@@ -165,6 +166,20 @@ def add_detected_jumps(feats_df: pd.DataFrame, combination: tuple[str, str], end
 
 	return local_feats_df, categorical_features
 
+def add_copula_features(feats_df: pd.DataFrame, combination: tuple[str, str], copula_reference_prices: pd.DataFrame, end_train_date: datetime):
+	train = feats_df.loc[feats_df.index <= end_train_date]
+	test = feats_df[feats_df.index > end_train_date]
+	train_copula_reference_prices = copula_reference_prices.loc[copula_reference_prices.index <= end_train_date]
+	test_copula_reference_prices = copula_reference_prices[copula_reference_prices.index > end_train_date]
+
+	spread_window = 20
+
+	rho_uv, df_hat, train_signal = FitCopula(train, combination, train_copula_reference_prices, spread_window)
+	test_signal = CalcCopulaSignals(test, combination, test_copula_reference_prices, spread_window, rho_uv, df_hat)
+
+	pass
+
+
 def clean(feats_df: pd.DataFrame):
 	df = feats_df.copy()
 
@@ -177,12 +192,14 @@ def clean(feats_df: pd.DataFrame):
 	return df
 
 def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_windows_days_list: list[int], end_train_date: datetime,
-				use_jump_features: bool) -> pd.DataFrame:
+				use_jump_features: bool, copula_reference_prices: pd.DataFrame) -> pd.DataFrame:
 	# logging.info(f'Start adding features for {combination}')
 
 	data = feats_df.copy()
 
 	all_categorical_features = []
+
+	data = add_copula_features(data, combination, copula_reference_prices, end_train_date)
 
 	data = add_basic_features(data, combination)
 

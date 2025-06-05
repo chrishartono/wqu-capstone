@@ -46,8 +46,8 @@ def manual_test(prices_df: pd.DataFrame):
 def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_val_net_return: float, min_val_num_trades: int, use_jump_features: bool):
 
 	all_possible_combinations = CreateAllPossibleCombinations(prices_df)
-	# np.random.shuffle(all_possible_combinations)
-	# all_possible_combinations_slice = all_possible_combinations[:100]
+	np.random.shuffle(all_possible_combinations)
+	all_possible_combinations_slice = all_possible_combinations[:100]
 
 	# all_possible_combinations_slice = [('close_vet-usdt', 'close_sc-usdt')]
 
@@ -56,7 +56,7 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 	# all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt'), ('close_troy-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_clv-usdt'),
 	# 								   ('close_rei-usdt', 'close_algo-usdt'), ('close_voxel-usdt', 'close_algo-usdt'), ('close_amp-usdt', 'close_bico-usdt'),
 	# 								   ('close_badger-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_celo-usdt'), ('close_rei-usdt', 'close_ach-usdt')]
-	train_window_days = 720
+	train_window_days = 180
 	val_window_days = 180
 	trade_window_days = 30
 	# train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
@@ -68,7 +68,7 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 							trade_window_days=trade_window_days,
 							val_window_days=val_window_days,
 							features_rolling_windows_days_list=[1, 5, 10],
-							all_possible_combinations=all_possible_combinations,
+							all_possible_combinations=all_possible_combinations_slice,
 							comovement_detection_type=ComovementType.GC_MI,
 							use_parallelization=True,
 							combination_limit=1000,
@@ -82,7 +82,8 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 							target_type=TargetType.OLS_CLF,
 							target_params=target_params,
 							close_on_no_signal=False,
-							use_jump_features=use_jump_features)
+							use_jump_features=use_jump_features,
+							reference_prices_column='close_btc-usdt')
 	backtester.Run()
 
 def run_consecutive_backtests():
@@ -181,10 +182,10 @@ if __name__ == '__main__':
 	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
 
 	# manual_test(prices_df)
-	# log_file_name = (f'logs/backtest_withjumps_{now_str}_val180_ncombs300_minret30_mintrd60.log')
-	# SetLogging(log_file_name)
-	# prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
-	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2025-03-01')]
-	# backtest_test(prices_df, num_good_combs_to_choose=300, min_val_net_return=0.3, min_val_num_trades=60)
-	# logging.info('Finished')
-	run_consecutive_backtests()
+	log_file_name = (f'logs/backtest_test.log')
+	SetLogging(log_file_name)
+	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
+	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2025-03-01')]
+	backtest_test(prices_df, num_good_combs_to_choose=1, min_val_net_return=0.3, min_val_num_trades=60, use_jump_features=False)
+	logging.info('Finished')
+	# run_consecutive_backtests()
