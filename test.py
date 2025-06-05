@@ -61,7 +61,9 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 	trade_window_days = 30
 	# train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
 	# target_params = {'numNeighbours': 10, 'rolling_window_days': 10}
-	target_params = {'look_ahead_days': 5, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
+	# NOTE: best so far
+	# NOTE: target_params = {'look_ahead_days': 2, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
+	target_params = {'look_ahead_days': 20, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
 	backtester = Backtester(prices_df=prices_df,
 							train_window_days=train_window_days,
 							ml_val_window_days=trade_window_days,

@@ -24,10 +24,13 @@ from utils.helpers import DaysWindowToPeriods, LogValueCounts
 
 catboost_hyperparameters = {
 		'depth'        : 5,
-		'iterations'   : 1000,
+		'iterations'   : 1000, # 100
 		'loss_function': 'MultiClass',
-		'learning_rate': 0.01,
-		'random_state' : 13579
+		'learning_rate': 0.01, # 0.1
+		'random_state' : 13579,
+		'rsm': 0.8,
+		'reg_lambda': 0.5,
+		'thread_count': 1
 		}
 
 
@@ -188,14 +191,17 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 
 	# val = train.iloc[-val_window_periods:]
 	# train = train.iloc[:len(train) - val_window_periods]
-
+	
+	# Exclude non-scaled close price
+	# close_columns = [col for col in train.columns if col.__contains__('close') and col.count('_') == 1]
+	# X_train = train.drop(columns=['TARGET'] + close_columns)
 	X_train = train.drop(columns=['TARGET'])
 	# X_val = val.drop(columns=['TARGET'])
+	# X_test = test.drop(columns=['TARGET'] + close_columns)
 	X_test = test.drop(columns=['TARGET'])
 	y_train = train['TARGET']
 	# y_val = val['TARGET']
 	y_test = test['TARGET']
-
 	# classes = np.unique(y_train)
 	# weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train)
 	# class_weights = dict(zip(classes, weights))
@@ -306,6 +312,9 @@ def Predict(data: pd.DataFrame,
 			model, combination: tuple[str, str],
 			use_top_model: TopModelType):
 	logging.info(f'Start bottom model training for {combination}')
+	# Exclude non-scaled close price
+	# close_columns = [col for col in data.columns if col.__contains__('close') and col.count('_') == 1]
+	# X = data.drop(columns=['TARGET']+close_columns)
 	X = data.drop(columns=['TARGET'])
 	y_pred = model.predict(X)
 
