@@ -36,7 +36,7 @@ class Backtester:
 				 train_window_days: int,
 				 ml_val_window_days: int,
 				 trade_window_days: int,
-				 val_test_split_coef: float,
+				 val_window_days: int,
 				 features_rolling_windows_days_list: list[int],
 				 all_possible_combinations: list[tuple[str, str]],
 				 comovement_detection_type: ComovementType,
@@ -64,7 +64,7 @@ class Backtester:
 		self.__features_rolling_windows_days_list = features_rolling_windows_days_list
 		self.__all_possible_combinations = all_possible_combinations
 		self.__comovement_type = comovement_detection_type
-		self.__date_bounds = self.__make_date_bounds(prices_df, train_window_days, trade_window_days, val_test_split_coef)
+		self.__date_bounds = self.__make_date_bounds(prices_df, train_window_days, val_window_days, trade_window_days)
 		self.__n_jobs = -1 if use_parallelization else 1
 		self.__combination_limit = combination_limit
 		self.__trade_limit = trade_limit
@@ -105,8 +105,7 @@ class Backtester:
 		return main_path, aggregated_path
 
 
-	@staticmethod
-	def __make_date_bounds(self, prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int, val_test_split_coef: float):
+	def __make_date_bounds(self, prices_df: pd.DataFrame, train_window_days: int, val_window_days: int, trade_window_days: int):
 		"""
 		This function creates boundaries for data train/test slices for walkforward backtest in format (start_train_date, end_train_date, end_test_date)
 
@@ -119,12 +118,9 @@ class Backtester:
 
 		last_date = prices_df.index[-1]
 		current_bound_date = prices_df.index[0] - timedelta(seconds=10)  # To make sure that the first row is included
-		val_test_days = trade_window_days / (1 - val_test_split_coef)
-		val_days = val_test_days - trade_window_days
 
-		# Here we assume that wf_window_days >> val_test_days
 		train_window = timedelta(days=train_window_days)
-		val_window = timedelta(days=val_days)
+		val_window = timedelta(days=val_window_days)
 		test_window = timedelta(days=trade_window_days)
 
 		date_bounds = []
@@ -143,50 +139,13 @@ class Backtester:
 
 		return date_bounds
 
-	def __make_date_bounds(self, prices_df: pd.DataFrame, train_window_days: int, trade_window_days: int, val_test_split_coef: float):
-		"""
-		This function creates boundaries for data train/test slices for walkforward backtest in format (start_train_date, end_train_date, end_test_date)
-
-		:param prices_df: Pandas DataFrame with 2 columns (one for each time series).
-		:param train_window_days: Number of days for train set.
-		:param trade_window_days: Number of days for test set.
-		:param val_test_split_coef: Determines VAL set size to VAL+TEST combined set size
-		:return: List of tuples of datetime values for boundaries.
-		"""
-
-		last_date = prices_df.index[-1]
-		current_bound_date = prices_df.index[0] - timedelta(seconds=10)  # To make sure that the first row is included
-		val_test_days = trade_window_days / (1 - val_test_split_coef)
-
-		# Here we assume that wf_window_days >> val_test_days
-		train_window = timedelta(days=train_window_days)
-		trade_window = timedelta(days=trade_window_days)
-		val_test_delta = timedelta(days=val_test_days)
-		test_delta = trade_window
-
-		date_bounds = []
-		# Iterate until there is not enough data to have at least val_test_days for train and val_test_days for val and test
-		while current_bound_date + train_window - test_delta <= last_date:
-
-			if current_bound_date + train_window <= last_date:  # The whole wf_window fits before last_date
-				date_bounds.append((current_bound_date, current_bound_date + train_window - val_test_delta, current_bound_date + train_window - test_delta,
-									current_bound_date + train_window))
-			else:  # Only 2 val_test_days windows fit before last_date
-				date_bounds.append((
-						current_bound_date, current_bound_date + train_window - val_test_delta, current_bound_date + train_window - test_delta, last_date))
-				break
-
-			current_bound_date = current_bound_date + trade_window
-
-		return date_bounds
-
 	def prepare_combination_data(self, data: pd.DataFrame, combination: tuple[str, str], coint_vector: PhillipsOuliarisTestResults, end_train_date: datetime):
 		try:
 			# logging.info(f'Start adding spread for {combination}')
 			data = AddCointCoefSpread(data, combination, coint_vector)
 
 			# logging.info(f'Start adding features for {combination}')
-			data = AddFeatures(data, combination, self.__features_rolling_windows_days_list, end_train_date)
+			data, categorical_features = AddFeatures(data, combination, self.__features_rolling_windows_days_list, end_train_date)
 
 			# logging.info(f'Start adding target for {combination}')
 			data = self.__AddTargetFunc(data, combination, target_col='spread', resulting_target_column='TARGET', target_params=self.__target_params)
@@ -196,10 +155,10 @@ class Backtester:
 			logging.exception(f'Error adding features for {combination}')
 			del data
 			gc.collect()
-			return None, combination, coint_vector
+			return None, combination, coint_vector, None
 
 		gc.collect()
-		return data, combination, coint_vector
+		return data, combination, coint_vector, categorical_features
 
 	def __prepare_all_combination_datas(self, good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]],
 										data: pd.DataFrame,
@@ -639,12 +598,12 @@ class Backtester:
 
 	def __get_val_metrics(self, data_tuples, start_date: datetime, end_train_date: datetime, end_val_date: datetime, end_test_date: datetime):
 		val_comb_metrics_tups = []
-		for comb_data, combination, coint_vector in data_tuples:
+		for comb_data, combination, coint_vector, categorical_features in data_tuples:
 			comb_train = comb_data[(comb_data.index > start_date) & (comb_data.index <= end_train_date)]
 			comb_val = comb_data[(comb_data.index > end_train_date) & (comb_data.index <= end_val_date)]
 			comb_test = comb_data[(comb_data.index > end_val_date) & (comb_data.index <= end_test_date)]
 
-			preds, model = Train(comb_train, comb_val, combination, self.__ml_val_window_days)
+			preds, model = Train(comb_train, comb_val, combination, self.__ml_val_window_days, categorical_features)
 			stats_df, val_metrics = self.__trading_logic(combination, comb_val, preds, coint_vector)
 			del stats_df
 
@@ -775,14 +734,14 @@ class Backtester:
 			data_tuples = self.__prepare_all_combination_datas(good_combinations, df_slice, end_train_date)
 			if not data_tuples: continue
 
-			for j, (comb_data, combination, coint_vector) in enumerate(data_tuples):
+			for j, (comb_data, combination, coint_vector, categorical_features) in enumerate(data_tuples):
 				logging.info(f'Starting combination {j} {combination} out of {len(data_tuples)}')
 				comb_train = comb_data[comb_data.index <= end_train_date]
 				comb_val = comb_data[(comb_data.index > end_train_date) & (comb_data.index <= end_val_date)]
 				comb_test =  comb_data[comb_data.index > end_val_date]
 
 				try:
-					metrics = ResearchTrain(comb_train, comb_val, comb_test, combination)
+					metrics = ResearchTrain(comb_train, comb_val, comb_test, combination, categorical_features)
 				except Exception as e:
 					logging.error(f'{combination} train failed with exception: {e}')
 					continue
