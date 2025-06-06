@@ -100,8 +100,8 @@ def AddClassificationOLSTarget(feats_df: pd.DataFrame,
 		current_value = values[i]
 		future_values = values[i + 1 : i + 1 + window]
 
-		future_above_points = future_values[(future_values - current_value) / current_value >= exceedance_thresh_frac]
-		future_below_points = future_values[(current_value - future_values) / current_value >= exceedance_thresh_frac]
+		future_above_points = future_values[(future_values - current_value) / abs(current_value) >= exceedance_thresh_frac]
+		future_below_points = future_values[(current_value - future_values) / abs(current_value) >= exceedance_thresh_frac]
 		above_points_frac = len(future_above_points) / len(future_values)
 		below_points_frac = len(future_below_points) / len(future_values)
 
@@ -128,7 +128,7 @@ def AddClassificationOLSTarget(feats_df: pd.DataFrame,
 
 	feats_target_df = feats_df.copy()
 	feats_target_df[resulting_target_column] = target
-
+	#
 	# fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 6))
 	# ax.plot(feats_target_df.index, feats_target_df[target_col], 'b-')
 	#

@@ -4,7 +4,6 @@ import os
 import sys
 import uuid
 from datetime import datetime, timedelta
-from turtledemo.penrose import start
 
 import numpy as np
 import pandas
@@ -23,7 +22,7 @@ from bottop_prediction import Predict, ResearchTrain, Train, TopModelType
 from combinations import SearchForGoodCombinations
 from comovement import ComovementType
 from feature_engineering import AddFeatures
-from spread import AddCointCoefSpread
+from spread import AddCointCoefSpread, AddPriceChangeSpread, AddRollingOLSSpread
 from target_creation import AddClassificationOLSTarget, AddPeakNeighboursTarget, TargetType
 from utils.data_structures import SignalTypes
 from utils.helpers import DaysWindowToPeriods, SemiStd
@@ -53,7 +52,9 @@ class Backtester:
 				 target_params: dict,
 				 close_on_no_signal: bool,
 				 use_jump_features: bool,
-				 reference_prices_column: str):
+				 use_copula_features: bool,
+				 reference_prices_column: str,
+				 spread_window: int):
 
 		self.__backtest_id = str(uuid.uuid4())
 		logging.info(f'Backtest_id={self.__backtest_id} {train_window_days=} {trade_window_days=} {min_val_net_return=} {min_val_num_trades=} '
@@ -87,7 +88,9 @@ class Backtester:
 
 		self.__close_on_no_signal = close_on_no_signal
 		self.__use_jump_features = use_jump_features
+		self.__use_copula_features = use_copula_features
 		self.__reference_prices_column = reference_prices_column
+		self.__spread_window=spread_window
 
 		self.__annualized_multiplier = np.sqrt(24 * 365)
 
@@ -151,7 +154,9 @@ class Backtester:
 								 copula_reference_prices: pd.DataFrame):
 		try:
 			# logging.info(f'Start adding spread for {combination}')
-			data = AddCointCoefSpread(data, combination, coint_vector)
+			# data = AddCointCoefSpread(data, combination, coint_vector)
+			# data = AddPriceChangeSpread(data, combination)
+			data = AddRollingOLSSpread(data, combination, self.__spread_window)
 
 			# logging.info(f'Start adding features for {combination}')
 			data, categorical_features = AddFeatures(data,
@@ -159,10 +164,12 @@ class Backtester:
 													 self.__features_rolling_windows_days_list,
 													 end_train_date,
 													 self.__use_jump_features,
+													 self.__use_copula_features,
 													 copula_reference_prices)
 
-			# logging.info(f'Start adding target for {combination}')
 			data = self.__AddTargetFunc(data, combination, target_col='spread', resulting_target_column='TARGET', target_params=self.__target_params)
+
+			# logging.info(f'Start adding target for {combination}')
 
 			logging.info(f'Finished data creation for {combination}')
 		except:
@@ -682,7 +689,7 @@ class Backtester:
 
 		self.__save_all_results()
 
-	def __plot_metrics_hist(self, all_metrics: dict[str, list[float]]):
+	def __plot_metrics_hist(self, all_metrics: dict[str, list[float]], filename: str):
 
 		def plot_group(sorted_items, group_name: str, ax, row: int):
 			for i, (label, values) in enumerate(sorted_items):
@@ -712,13 +719,36 @@ class Backtester:
 		plot_group(f1_default_items, group_name='F1 Default Threshold', ax=axes, row=1)
 		plot_group(f1_tuned_items, group_name='F1 Tuned Threshold', ax=axes, row=2)
 
-		fig.savefig(f'{self.__main_path}/metrics_distr_'
-					f'trn{self.__train_window_days}_trd{self.__trade_window_days}_'
-					f'ncomb{self.__num_good_combs_to_choose}_tarwin{self.__target_params["look_ahead_days"]}_'
-					f'{self.__backtest_id}.png')
+		fig.savefig(f'{self.__main_path}/metrics_distr_{filename}_{self.__backtest_id}.png')
 		plt.close()
 
-	def MLPredictionQualityTest(self, desired_num_samples: int):
+	def __make_aggregated_ml_stats(self, all_metrics: dict[str, list[float]]):
+		def make_group_aggr(metric: str, items):
+			aggr_values = []
+			for label, values in items:
+				label_class = label.split('_')[-1]
+				median = np.median(values)
+				std = np.std(values)
+				aggr_values.append({'class': label_class, 'metric': metric, 'median': median, 'std': std})
+
+			return aggr_values
+
+		all_aggr_values = []
+		auc_items = [(k, v) for k, v in all_metrics.items() if 'auc' in k]
+		auc_aggr = make_group_aggr('auc', auc_items)
+		all_aggr_values.extend(auc_aggr)
+
+		f1_default_items = [(k, v) for k, v in all_metrics.items() if 'f1_default' in k]
+		f1_default_aggr = make_group_aggr('f1_default', f1_default_items)
+		all_aggr_values.extend(f1_default_aggr)
+
+		f1_tuned_items = [(k, v) for k, v in all_metrics.items() if 'f1_tuned' in k]
+		f1_tuned_aggr = make_group_aggr('f1_tuned', f1_tuned_items)
+		all_aggr_values.extend(f1_tuned_aggr)
+
+		return all_aggr_values
+
+	def MLPredictionQualityTest(self, desired_num_samples: int, filename: str):
 		sample_size = (self.__train_window_days + self.__ml_val_window_days + self.__trade_window_days) * 24
 		possible_num_samples = int(len(self.__prices_df) / sample_size)
 
@@ -764,4 +794,7 @@ class Backtester:
 					if label not in all_metrics: all_metrics[label] = []
 					all_metrics[label].append(metric_value)
 
-		self.__plot_metrics_hist(all_metrics)
+		self.__plot_metrics_hist(all_metrics, filename)
+		all_aggr_values = self.__make_aggregated_ml_stats(all_metrics)
+
+		return all_aggr_values

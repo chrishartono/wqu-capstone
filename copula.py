@@ -114,17 +114,23 @@ def make_spreads(feats_df: pd.DataFrame, combination: tuple[str, str], reference
 
 	return spreads_df
 
-def make_signal(combination: tuple[str, str], U: pd.DataFrame, rho_uv: np.ndarray, df_hat: int, spread_window: int):
+def make_signal(combination: tuple[str, str], U: pd.DataFrame, rho_uv: np.ndarray, df_hat: int, spread_window: int, alpha1: float, alpha2: float):
 	u, v = U[combination[0]], U[combination[1]]
 	cond_u = copula_cond_prob(u, v, rho=rho_uv, df=df_hat)
 	cond_v = copula_cond_prob(v, u,  rho=rho_uv, df=df_hat)
 
 	cond_df = pd.DataFrame({'h12': cond_u, 'h21': cond_v})
-	signal = calc_signals_article(cond_df, alpha1=0.3, alpha2=0.3)
-
+	signal = calc_signals_article(cond_df, alpha1, alpha2)
 	# Add zeros at the beginning to match the original size
 	signal = np.pad(signal, (spread_window, 0), 'constant', constant_values=0)
-	return signal
+
+	rolling_signal = calc_signals_rolling(cond_df, spread_window, alpha1, alpha2)
+	rolling_signal = np.pad(rolling_signal, (spread_window, 0), 'constant', constant_values=0)
+
+	cumulative_signal = np.cumsum(signal)
+	cumulative_rolling_signal = np.cumsum(rolling_signal)
+
+	return signal, rolling_signal, cumulative_signal, cumulative_rolling_signal
 
 def make_U(spreads_df: pd.DataFrame):
 	cdf_input = spreads_df.dropna()
@@ -141,25 +147,27 @@ def do_fit_copula(u_data: np.ndarray):
 
 	return rho_uv, df_hat
 
-def FitCopula(train: pd.DataFrame, combination: tuple[str, str], train_reference_prices: pd.DataFrame, spread_window: int):
+def FitCopula(train: pd.DataFrame, combination: tuple[str, str], train_reference_prices: pd.DataFrame, spread_window: int, alpha1: float, alpha2: float):
 	spreads_df = make_spreads(train, combination, train_reference_prices.iloc[:,0], spread_window)
 
 	U = make_U(spreads_df)
 	u_data = U.to_numpy()
 
 	rho_uv, df_hat = do_fit_copula(u_data)
-	signal = make_signal(combination, U, rho_uv, df_hat, spread_window)
+	signal, rolling_signal, cumulative_signal, cumulative_rolling_signal = make_signal(combination, U, rho_uv, df_hat, spread_window, alpha1, alpha2)
 
-	return rho_uv, df_hat, signal
+	return rho_uv, df_hat, signal, rolling_signal, cumulative_signal, cumulative_rolling_signal
 
 def CalcCopulaSignals(test: pd.DataFrame,
 					  combination: tuple[str, str],
 					  test_reference_prices: pd.DataFrame,
 					  spread_window: int,
+					  alpha1: float,
+					  alpha2: float,
 					  rho_uv: np.ndarray,
 					  df_hat: int):
 	spreads_df = make_spreads(test, combination, test_reference_prices.iloc[:,0], spread_window)
 	U = make_U(spreads_df)
-	signal = make_signal(combination, U, rho_uv, df_hat, spread_window)
+	signal, rolling_signal, cumulative_signal, cumulative_rolling_signal = make_signal(combination, U, rho_uv, df_hat, spread_window, alpha1, alpha2)
 
-	return signal
+	return signal, rolling_signal, cumulative_signal, cumulative_rolling_signal

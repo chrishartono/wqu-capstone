@@ -166,18 +166,39 @@ def add_detected_jumps(feats_df: pd.DataFrame, combination: tuple[str, str], end
 
 	return local_feats_df, categorical_features
 
-def add_copula_features(feats_df: pd.DataFrame, combination: tuple[str, str], copula_reference_prices: pd.DataFrame, end_train_date: datetime):
+def add_copula_features(feats_df: pd.DataFrame,
+						combination: tuple[str, str],
+						copula_reference_prices: pd.DataFrame,
+						end_train_date: datetime,
+						window: int,
+						alpha1: float,
+						alpha2: float):
+
+	local_feats_df = feats_df.copy()
+
 	train = feats_df.loc[feats_df.index <= end_train_date]
 	test = feats_df[feats_df.index > end_train_date]
 	train_copula_reference_prices = copula_reference_prices.loc[copula_reference_prices.index <= end_train_date]
 	test_copula_reference_prices = copula_reference_prices[copula_reference_prices.index > end_train_date]
 
-	spread_window = 20
+	rho_uv, df_hat, train_signal, train_rolling_signal, train_cumulative_signal, train_cumulative_rolling_signal = FitCopula(train, combination, train_copula_reference_prices,
+																									  window, alpha1, alpha2)
+	test_signal, test_rolling_signal, test_cumulative_signal, test_cumulative_rolling_signal = CalcCopulaSignals(test, combination, test_copula_reference_prices,
+																								  window, alpha1, alpha2, rho_uv, df_hat)
 
-	rho_uv, df_hat, train_signal = FitCopula(train, combination, train_copula_reference_prices, spread_window)
-	test_signal = CalcCopulaSignals(test, combination, test_copula_reference_prices, spread_window, rho_uv, df_hat)
+	signal = np.hstack((train_signal, test_signal))
+	rolling_signal = np.hstack((train_rolling_signal, test_rolling_signal))
+	cumulative_signal = np.hstack((train_cumulative_signal, test_cumulative_signal))
+	cumulative_rolling_signal = np.hstack((train_cumulative_rolling_signal, test_cumulative_rolling_signal))
 
-	pass
+	local_feats_df[f'copula_signal_{window}'] = signal
+	local_feats_df[f'copula_rolling_signal_{window}'] = rolling_signal
+	local_feats_df[f'copula_cumulative_signal_{window}'] = cumulative_signal
+	local_feats_df[f'copula_cumulative_rolling_signal_{window}'] = cumulative_rolling_signal
+
+	categorical_features = [f'copula_signal_{window}', f'copula_rolling_signal_{window}']
+
+	return local_feats_df, categorical_features
 
 
 def clean(feats_df: pd.DataFrame):
@@ -192,24 +213,28 @@ def clean(feats_df: pd.DataFrame):
 	return df
 
 def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_windows_days_list: list[int], end_train_date: datetime,
-				use_jump_features: bool, copula_reference_prices: pd.DataFrame) -> pd.DataFrame:
+				use_jump_features: bool, use_copula_features: bool, copula_reference_prices: pd.DataFrame) -> pd.DataFrame:
 	# logging.info(f'Start adding features for {combination}')
 
 	data = feats_df.copy()
 
 	all_categorical_features = []
 
-	data = add_copula_features(data, combination, copula_reference_prices, end_train_date)
-
 	data = add_basic_features(data, combination)
 
 	base_features = data.columns.tolist()
 	for rolling_window_days in rolling_windows_days_list:
 		window_periods = DaysWindowToPeriods(data, rolling_window_days)
+
 		data, zscore_categorical_features = add_zscores(data, window_periods, feat_columns=base_features)
+		all_categorical_features.extend(zscore_categorical_features)
+
+		if use_copula_features:
+			data, copula_categorical_features = add_copula_features(data, combination, copula_reference_prices, end_train_date, window_periods, alpha1=0.3, alpha2=0.3)
+			all_categorical_features.extend(copula_categorical_features)
+
 		data = add_rolling_hurst(data, window_periods)
 
-		all_categorical_features.extend(zscore_categorical_features)
 
 	# Passing already created categorical features to catboost spread prediction
 	data = add_catboost_spread_prediction(data, end_train_date, all_categorical_features)
