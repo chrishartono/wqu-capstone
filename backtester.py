@@ -230,8 +230,8 @@ class Backtester:
 		pair_pos[0].append(last_pair_pos[0])
 		pair_pos[1].append(last_pair_pos[1])
 		# Sign is already in last_pair_pos, so coef is taken as abs
-		pair_mtm[0].append(last_pair_cash_pos[0] + last_pair_pos[0] * prices[0][i] * abs(coef[0]))
-		pair_mtm[1].append(last_pair_cash_pos[1] + last_pair_pos[1] * prices[1][i] * abs(coef[1]))
+		pair_mtm[0].append(last_pair_cash_pos[0] + last_pair_pos[0] * prices[0][i])
+		pair_mtm[1].append(last_pair_cash_pos[1] + last_pair_pos[1] * prices[1][i])
 
 	def __finalize_backtest(self,
 							prices,
@@ -343,7 +343,7 @@ class Backtester:
 					# And as this is a cumulative cash_pos, we add it to the previous one.
 					last_pair_cash_pos = [last_pair_cash_pos[0] - prices[0][i] * coef[0], last_pair_cash_pos[1] - prices[1][i] * coef[1]]
 					# Positions counted as number of trades. Add to the previous.
-					last_pair_pos = [last_pair_pos[0] + np.sign(coef[0]), last_pair_pos[1] + np.sign(coef[1])]
+					last_pair_pos = [last_pair_pos[0] + coef[0], last_pair_pos[1] + coef[1]]
 					last_fees = [abs(prices[0][i] * coef[0] * self.__fees), abs(prices[1][i] * coef[1] * self.__fees)]
 
 			elif prediction == SignalTypes.SELL.value:
@@ -351,13 +351,12 @@ class Backtester:
 					combination_exposure_trades -= 1
 					# Opposite here. Flip the signs.
 					last_pair_cash_pos = [last_pair_cash_pos[0] + prices[0][i] * coef[0], last_pair_cash_pos[1] + prices[1][i] * coef[1]]
-					last_pair_pos = [last_pair_pos[0] - np.sign(coef[0]), last_pair_pos[1] - np.sign(coef[1])]
+					last_pair_pos = [last_pair_pos[0] - coef[0], last_pair_pos[1] - coef[1]]
 					last_fees = [abs(prices[0][i] * coef[0] * self.__fees), abs(prices[1][i] * coef[1] * self.__fees)]
 
 			elif self.__close_on_no_signal and combination_exposure_trades != 0: # No signal, close position if it is open
-				last_pair_cash_pos = [last_pair_cash_pos[0] + prices[0][i] * last_pair_pos[0] * abs(coef[0]),
-									  last_pair_cash_pos[1] + prices[1][i] * last_pair_pos[1] * abs(coef[1])]
-				last_fees = [abs(prices[0][i] * last_pair_pos[0] * coef[0] * self.__fees), abs(prices[1][i] * last_pair_pos[1] * coef[1] * self.__fees)]
+				last_pair_cash_pos = [last_pair_cash_pos[0] + prices[0][i] * last_pair_pos[0], last_pair_cash_pos[1] + prices[1][i] * last_pair_pos[1]]
+				last_fees = [abs(prices[0][i] * last_pair_pos[0] * self.__fees), abs(prices[1][i] * last_pair_pos[1] * self.__fees)]
 				last_pair_pos = [0, 0]
 				combination_exposure_trades = 0
 
