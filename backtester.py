@@ -51,9 +51,6 @@ class Backtester:
 				 target_type: TargetType,
 				 target_params: dict,
 				 close_on_no_signal: bool,
-				 use_jump_features: bool,
-				 use_copula_features: bool,
-				 reference_prices_column: str,
 				 spread_window: int):
 
 		self.__backtest_id = str(uuid.uuid4())
@@ -87,9 +84,6 @@ class Backtester:
 			raise Exception(f'Unknown target type: {target_type}')
 
 		self.__close_on_no_signal = close_on_no_signal
-		self.__use_jump_features = use_jump_features
-		self.__use_copula_features = use_copula_features
-		self.__reference_prices_column = reference_prices_column
 		self.__spread_window=spread_window
 
 		self.__annualized_multiplier = np.sqrt(24 * 365)
@@ -150,8 +144,7 @@ class Backtester:
 								 data: pd.DataFrame,
 								 combination: tuple[str, str],
 								 coint_vector: PhillipsOuliarisTestResults,
-								 end_train_date: datetime,
-								 copula_reference_prices: pd.DataFrame):
+								 end_train_date: datetime):
 		try:
 			# logging.info(f'Start adding spread for {combination}')
 			# data = AddCointCoefSpread(data, combination, coint_vector)
@@ -162,10 +155,7 @@ class Backtester:
 			data, categorical_features = AddFeatures(data,
 													 combination,
 													 self.__features_rolling_windows_days_list,
-													 end_train_date,
-													 self.__use_jump_features,
-													 self.__use_copula_features,
-													 copula_reference_prices)
+													 end_train_date)
 
 			data = self.__AddTargetFunc(data, combination, target_col='spread', resulting_target_column='TARGET', target_params=self.__target_params)
 
@@ -192,7 +182,7 @@ class Backtester:
 			pair1 = comb[0].split('_')[1]
 			pair2 = comb[1].split('_')[1]
 			comb_columns = [col for col in data.columns if pair1 in col or pair2 in col]
-			params.append((data[comb_columns], comb, coint_vector, end_train_date, data[self.__reference_prices_column].to_frame()))
+			params.append((data[comb_columns], comb, coint_vector, end_train_date))
 
 		all_results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
 					   (delayed(self.prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc=f"Train data preparations:")))

@@ -43,8 +43,7 @@ def manual_test(prices_df: pd.DataFrame):
 	# window_rows = int(len(train) / 20)
 	# feats_df = AddPeakNeighboursSingleColumn(feats_df, combination, target_col='spread', period=window_rows, resulting_target_column='TARGET', numNeighbours=10)
 
-def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_val_net_return: float, min_val_num_trades: int, use_jump_features: bool,
-				  use_copula_features: bool):
+def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_val_net_return: float, min_val_num_trades: int):
 
 	all_possible_combinations = CreateAllPossibleCombinations(prices_df)
 	# np.random.shuffle(all_possible_combinations)
@@ -85,9 +84,6 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 							target_type=TargetType.OLS_CLF,
 							target_params=target_params,
 							close_on_no_signal=False,
-							use_jump_features=use_jump_features,
-							use_copula_features=use_copula_features,
-							reference_prices_column='close_btc-usdt',
 							spread_window=spread_window)
 	backtester.Run()
 
@@ -95,8 +91,6 @@ def run_consecutive_backtests():
 	num_good_combs_to_choose_list = [1]
 	min_val_net_return_list = [0.3]
 	min_val_num_trades_list = [60]
-	use_jump_features_list = [False]
-	use_copula_features_list = [True]
 
 	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2025-03-01')]
@@ -104,22 +98,20 @@ def run_consecutive_backtests():
 	for num_good_combs_to_choose in num_good_combs_to_choose_list:
 		for min_val_net_return in min_val_net_return_list:
 			for min_val_num_trades in min_val_num_trades_list:
-				for use_jump_features in use_jump_features_list:
-					for use_copula_features in use_copula_features_list:
-						now_str = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
-						min_val_net_return_str = str(int(min_val_net_return*100))
-						log_file_name = (f'logs/backtest_{now_str}_jumps{use_jump_features}_copula{use_copula_features}_ncombs{num_good_combs_to_choose}_'
-										 f'minret{min_val_net_return_str}_'
-										 f'mintrd{min_val_num_trades}.log')
+					now_str = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
+					min_val_net_return_str = str(int(min_val_net_return*100))
+					log_file_name = (f'logs/backtest_{now_str}_ncombs{num_good_combs_to_choose}_'
+									 f'minret{min_val_net_return_str}_'
+									 f'mintrd{min_val_num_trades}.log')
 
-						if not IsLoggingConfigured():
-							SetLogging(log_file_name)
-						else:
-							ResetLogFileHandler(log_file_name)
+					if not IsLoggingConfigured():
+						SetLogging(log_file_name)
+					else:
+						ResetLogFileHandler(log_file_name)
 
-						prices_df_copy = prices_df.copy()
-						backtest_test(prices_df_copy, num_good_combs_to_choose, min_val_net_return, min_val_num_trades, use_jump_features, use_copula_features)
-						logging.info('Finished')
+					prices_df_copy = prices_df.copy()
+					backtest_test(prices_df_copy, num_good_combs_to_choose, min_val_net_return, min_val_num_trades)
+					logging.info('Finished')
 
 def ml_quality_test(prices_df: pd.DataFrame, train_window_days, val_window_days, trade_window_days, num_good_combs_to_choose, desired_num_samples,
 					target_window, use_jump_features, use_copula_features, spread_window, filename, use_slice):
@@ -222,6 +214,6 @@ if __name__ == '__main__':
 	SetLogging(log_file_name)
 	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
-	backtest_test(prices_df, num_good_combs_to_choose=200, min_val_net_return=0.1, min_val_num_trades=120, use_jump_features=False, use_copula_features=False)
+	backtest_test(prices_df, num_good_combs_to_choose=200, min_val_net_return=0.1, min_val_num_trades=120)
 	logging.info('Finished')
 	# run_consecutive_backtests()
