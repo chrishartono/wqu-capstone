@@ -2,6 +2,8 @@ import logging
 import sys
 import warnings
 
+from threshold_tuner import ClassificationThresholdTuner
+
 warnings.filterwarnings("ignore")
 from itertools import cycle
 from tqdm import tqdm
@@ -11,7 +13,8 @@ import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier
 from matplotlib import pyplot as plt
-from sklearn.metrics import PrecisionRecallDisplay, average_precision_score, classification_report, precision_recall_curve, roc_auc_score, roc_curve, auc
+from sklearn.metrics import (PrecisionRecallDisplay, average_precision_score, classification_report, f1_score, precision_recall_curve, roc_auc_score, roc_curve,
+							 auc, )
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.utils import compute_class_weight
 from statsmodels.tsa.arima.model import ARIMA
@@ -20,12 +23,16 @@ from top_model import TopModelArima, TopModelType
 from utils.helpers import DaysWindowToPeriods, LogValueCounts
 
 catboost_hyperparameters = {
-	'depth': 4, 
-	'iterations': 1000, 
-	'loss_function': 'MultiClass',
-	'learning_rate': 0.1, 
-	'random_state': 13579
-}
+		'depth'        : 5,
+		'iterations'   : 1000, # 100
+		'loss_function': 'MultiClass',
+		'learning_rate': 0.01, # 0.1
+		'random_state' : 13579,
+		'rsm': 0.8,
+		'reg_lambda': 0.5,
+		'thread_count': 1
+		}
+
 
 def calc_multiclass_macro_auc(y_train: pd.Series, y_test: pd.Series, y_probs: np.ndarray):
 	label_binarizer = LabelBinarizer().fit(y_train)
@@ -159,6 +166,7 @@ def save_feature_importance(combination: tuple[str, str], clf: CatBoostClassifie
 
 	plt.show()
 
+
 def save_clf_results(combination: tuple[str, str],
 					 clf: CatBoostClassifier,
 					 columns: list[str],
@@ -166,7 +174,6 @@ def save_clf_results(combination: tuple[str, str],
 					 y_test: pd.Series,
 					 y_probs: np.ndarray,
 					 y_pred: np.ndarray):
-
 	LogValueCounts(y_test.unique(), y_test.value_counts(sort=False).values, 'Test', len(y_test))
 
 	report = classification_report(y_test, y_pred)
@@ -176,21 +183,25 @@ def save_clf_results(combination: tuple[str, str],
 	save_pr_plot(combination, y_train, y_test, y_probs)
 	save_feature_importance(combination, clf, columns)
 
-def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], val_window_days: int):
+
+def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], val_window_days: int, categorical_features: list[str]):
 	logging.info(f'Start bottom model training for {combination}')
 
 	# val_window_periods = DaysWindowToPeriods(train, val_window_days)
 
 	# val = train.iloc[-val_window_periods:]
 	# train = train.iloc[:len(train) - val_window_periods]
-
+	
+	# Exclude non-scaled close price
+	# close_columns = [col for col in train.columns if col.__contains__('close') and col.count('_') == 1]
+	# X_train = train.drop(columns=['TARGET'] + close_columns)
 	X_train = train.drop(columns=['TARGET'])
 	# X_val = val.drop(columns=['TARGET'])
+	# X_test = test.drop(columns=['TARGET'] + close_columns)
 	X_test = test.drop(columns=['TARGET'])
 	y_train = train['TARGET']
 	# y_val = val['TARGET']
 	y_test = test['TARGET']
-
 	# classes = np.unique(y_train)
 	# weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train)
 	# class_weights = dict(zip(classes, weights))
@@ -198,32 +209,112 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 	LogValueCounts(y_train.unique(), y_train.value_counts(sort=False).values, 'Train', len(y_train))
 
 	# clf = CatBoostClassifier(verbose=0, class_weights=class_weights, **catboost_hyperparameters)
-	clf = CatBoostClassifier(verbose=0, **catboost_hyperparameters)
+	clf = CatBoostClassifier(verbose=0, cat_features=categorical_features, **catboost_hyperparameters)
 	# clf.fit(X=X_train, y=y_train, eval_set=(X_val, y_val), early_stopping_rounds=20)
 	clf.fit(X=X_train, y=y_train)
 
 	logging.info(f'Making predictions for {len(X_test)} rows')
-	y_probs = clf.predict_proba(X_test)
 	y_pred = clf.predict(X_test)
 
+	# y_probs = clf.predict_proba(X_test)
 	# save_clf_results(combination, clf, list(X_train.columns), y_train, y_test, y_probs, y_pred)
+	# del y_probs
 	# sys.exit(0)
 
-	del train, X_train, X_test, y_train, y_test, y_probs
-	# del val, train, X_train, X_val, X_test, y_train, y_val, y_test, y_probs
+	del train, X_train, X_test, y_train, y_test
+	# del val, train, X_train, X_val, X_test, y_train, y_val, y_test
 
 	return y_pred, clf
+
+
+def ResearchTrain(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], categorical_features: list[str]):
+	logging.info(f'Start bottom model training for {combination}')
+
+	X_train = train.drop(columns=['TARGET'])
+	X_val = val.drop(columns=['TARGET'])
+	X_test = test.drop(columns=['TARGET'])
+	y_train = train['TARGET']
+	y_val = val['TARGET']
+	y_test = test['TARGET']
+
+	tuner = ClassificationThresholdTuner()
+
+	LogValueCounts(y_train.unique(), y_train.value_counts(sort=False).values, 'Train', len(y_train))
+	clf = CatBoostClassifier(verbose=0, cat_features=categorical_features, **catboost_hyperparameters)
+	clf.fit(X=X_train, y=y_train)
+	# y_pred = clf.predict(X_test)
+	y_val_probs = clf.predict_proba(X_val)
+	y_test_probs = clf.predict_proba(X_test)
+	y_test_pred_orig = clf.predict(X_test)
+
+	target_classes = sorted(np.unique(y_val))
+	best_thresholds = tuner.tune_threshold(y_true=y_val,
+										   target_classes=target_classes,
+										   y_pred_proba=y_val_probs,
+										   metric=f1_score,
+										   average='macro',
+										   higher_is_better=True,
+										   default_class='0',
+										   max_iterations=5)
+
+	# tuner.print_stats_proba(y_true=y_val,
+	# 						target_classes=target_classes,
+	# 						y_pred_proba=y_val_probs,
+	# 						default_class='0',
+	# 						thresholds=[0.5, 0.5, 0.5])
+	#
+	# tuner.print_stats_proba(y_true=y_val,
+	# 						target_classes=target_classes,
+	# 						y_pred_proba=y_val_probs,
+	# 						default_class='0',
+	# 						thresholds=best_thresholds)
+
+	# orig_report = classification_report(y_test, y_test_pred_orig)
+	# logging.info(f"Original Classification report:\n{orig_report}")
+
+	y_test_pred_tuned = tuner.get_predictions(target_classes, y_test_probs, '0', best_thresholds)
+	y_test_pred_tuned = [int(label) for label in y_test_pred_tuned]
+	# tuned_report = classification_report(y_test, y_test_pred_tuned)
+	# logging.info(f"TUNED Classification report:\n{tuned_report}")
+
+	classes_default_f1_scores = f1_score(y_test, y_test_pred_orig, average=None)
+	macro_default_f1_score = f1_score(y_test, y_test_pred_orig, average='macro')
+
+	classes_tuned_f1_scores = f1_score(y_test, y_test_pred_tuned, average=None)
+	macro_tuned_f1_score = f1_score(y_test, y_test_pred_tuned, average='macro')
+
+	macro_roc_auc_ovr = roc_auc_score(y_test, y_test_probs, multi_class="ovr", average="macro")
+	metrics = {'auc_macro': macro_roc_auc_ovr, 'f1_default_macro': macro_default_f1_score, 'f1_tuned_macro': macro_tuned_f1_score}
+
+	fpr, tpr, fpr_classes_list, tpr_classes_list = calc_multiclass_macro_auc(y_train, y_test, y_test_probs)
+	for i in range(len(fpr_classes_list)):
+		fpr_class = fpr_classes_list[i]
+		tpr_class = tpr_classes_list[i]
+		auc_class = auc(fpr_class, tpr_class)
+
+		metrics[f'auc_{i}'] = auc_class
+		metrics[f'f1_default_{i}'] = classes_default_f1_scores[i]
+		metrics[f'f1_tuned_{i}'] = classes_tuned_f1_scores[i]
+
+	# logging.info(metrics)
+	# sys.exit(0)
+	return metrics
+
 
 def apply_top_model_filter(y_signal, y_filter):
 	y_signal_filtered = y_signal.reshape(-1) * np.array(y_filter)
 	y_pred = y_signal_filtered.reshape(-1, 1)
 	return y_pred
 
+
 def Predict(data: pd.DataFrame,
 			data_val: pd.DataFrame,
 			model, combination: tuple[str, str],
 			use_top_model: TopModelType):
 	logging.info(f'Start bottom model training for {combination}')
+	# Exclude non-scaled close price
+	# close_columns = [col for col in data.columns if col.__contains__('close') and col.count('_') == 1]
+	# X = data.drop(columns=['TARGET']+close_columns)
 	X = data.drop(columns=['TARGET'])
 	y_pred = model.predict(X)
 
