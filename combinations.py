@@ -43,7 +43,7 @@ def SearchForGoodCombinations(prices_df: pd.DataFrame, all_possible_combinations
 							  num_good_combs_to_choose: int) \
 		-> list[tuple[tuple[str, str], PhillipsOuliarisTestResults]]:
 	logging.info(f'Start searching for good combinations from total of {len(all_possible_combinations)} possible combinations '
-				 f'from {prices_df.index[0]} to {prices_df.index[-1]} and for pairs: {[col for col in prices_df.columns if col.__contains__('close')]}')
+				 f'from {prices_df.index[0]} to {prices_df.index[-1]} and for pairs: {[col for col in prices_df.columns if "close" in col]}')
 
 	params = [(prices_df[list(combination)], combination, comovement_type) for combination in all_possible_combinations]
 	results = (Parallel(n_jobs=n_jobs, prefer="processes")
