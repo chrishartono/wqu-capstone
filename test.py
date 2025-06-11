@@ -13,6 +13,7 @@ from comovement import ComovementType, test_cointegration
 from feature_engineering import AddFeatures
 from spread import AddPolyfitSpread
 from target_creation import AddPeakNeighboursTarget, TargetType
+from utils.helpers import CountAlternatingNonZeroSequences
 
 
 def manual_test(prices_df: pd.DataFrame):
@@ -60,7 +61,7 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 	val_window_days = 60
 	trade_window_days = 60
 	spread_window = 5
-	target_window = 20
+	target_window = 5
 	# train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
 	# target_params = {'numNeighbours': 10, 'rolling_window_days': 10}
 	target_params = {'look_ahead_days': target_window, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
@@ -210,7 +211,7 @@ if __name__ == '__main__':
 	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
 
 	# manual_test(prices_df)
-	log_file_name = (f'logs/backtest_test_many_trades.log')
+	log_file_name = (f'logs/backtest_test_120trades_target5.log')
 	SetLogging(log_file_name)
 	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]

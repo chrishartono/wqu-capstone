@@ -20,17 +20,17 @@ from sklearn.utils import compute_class_weight
 from statsmodels.tsa.arima.model import ARIMA
 
 from top_model import TopModelArima, TopModelType
-from utils.helpers import DaysWindowToPeriods, LogValueCounts
+from utils.helpers import CountAlternatingNonZeroSequences, DaysWindowToPeriods, LogValueCounts
 
 catboost_hyperparameters = {
 		'depth'        : 5,
 		'iterations'   : 1000, # 100
 		'loss_function': 'MultiClass',
 		'learning_rate': 0.01, # 0.1
-		'random_state' : 13579,
-		'rsm': 0.8,
-		'reg_lambda': 0.5,
-		'thread_count': 1
+		'random_state' : 13579
+		# 'rsm': 0.8,
+		# 'reg_lambda': 0.5
+		# 'thread_count': 1
 		}
 
 
@@ -206,6 +206,9 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 	# weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train)
 	# class_weights = dict(zip(classes, weights))
 
+	# logging.info(f'{train_signal_density=:.3f} {test_signal_density=:.3f}')
+	# sys.exit(0)
+
 	LogValueCounts(y_train.unique(), y_train.value_counts(sort=False).values, 'Train', len(y_train))
 
 	# clf = CatBoostClassifier(verbose=0, class_weights=class_weights, **catboost_hyperparameters)
@@ -215,6 +218,12 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 
 	logging.info(f'Making predictions for {len(X_test)} rows')
 	y_pred = clf.predict(X_test)
+
+	train_signal_density = CountAlternatingNonZeroSequences(y_train) / (len(y_train) / 24)
+	test_signal_density = CountAlternatingNonZeroSequences(y_test) / (len(y_test) / 24)
+	pred_signal_density = CountAlternatingNonZeroSequences(y_pred) / (len(y_pred) / 24)
+
+	logging.info(f'{train_signal_density=:.3f} {test_signal_density=:.3f} {pred_signal_density=:.3f}')
 
 	# y_probs = clf.predict_proba(X_test)
 	# save_clf_results(combination, clf, list(X_train.columns), y_train, y_test, y_probs, y_pred)

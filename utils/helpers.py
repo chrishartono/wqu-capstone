@@ -29,3 +29,16 @@ def SemiStd(series):
 	r_below = series[series < average]
 	if (len(r_below) == 0): return 0.001
 	return np.sqrt(1 / len(r_below) * np.sum((average - r_below) ** 2))
+
+def CountAlternatingNonZeroSequences(values):
+	nonzeros = [x for x in values if x != 0]
+
+	count = 0
+	prev_val = None
+
+	for x in nonzeros:
+		if prev_val is None or x != prev_val:
+			count += 1
+			prev_val = x
+
+	return count

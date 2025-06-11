@@ -96,7 +96,7 @@ def AddClassificationOLSTarget(feats_df: pd.DataFrame,
 	# x_values = np.arange(window)
 	# X = sm.add_constant(x_values)
 	i = 0
-	while i + 1 + window < len(values) and window >= 24 * 2:
+	while i + 1 + window < len(values) and window >= 12:
 		current_value = values[i]
 		future_values = values[i + 1 : i + 1 + window]
 
