@@ -586,7 +586,8 @@ class Backtester:
 
 			stats_df['cumprod_mtm_returns'] = (stats_df[f'mtm_returns'] + 1).cumprod()
 			trading_days = (stats_df.index[-1] - stats_df.index[0]).days
-			metrics = self.__calc_metrics(stats_df['cumprod_mtm_returns'].to_numpy(), trading_days)
+			num_trades = stats_df['buy_points'].count() + stats_df['sell_points'].count()
+			metrics = self.__calc_metrics(stats_df['cumprod_mtm_returns'].to_numpy(), trading_days, num_trades)
 
 			save_file_name = f'{pair0}_{pair1}'
 
