@@ -50,8 +50,7 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 	# np.random.shuffle(all_possible_combinations)
 	# all_possible_combinations_slice = all_possible_combinations[:50]
 
-	# all_possible_combinations_slice = [('close_vet-usdt', 'close_sc-usdt')]
-
+	# all_possible_combinations_slice = [('close_axs-usdt', 'close_sand-usdt')]
 	# all_possible_combinations_slice = [('close_algo-usdt', 'close_reef-usdt')]
 	# all_possible_combinations_slice = [('close_bat-usdt', 'close_omg-usdt')]
 	# all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt'), ('close_troy-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_clv-usdt'),
@@ -61,7 +60,7 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 	val_window_days = 60
 	trade_window_days = 60
 	spread_window = 5
-	target_window = 5
+	target_window = 20
 	# train_window_days = (prices_df.index[-1] - prices_df.index[0]).days - trade_window_days
 	# target_params = {'numNeighbours': 10, 'rolling_window_days': 10}
 	target_params = {'look_ahead_days': target_window, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
@@ -211,10 +210,10 @@ if __name__ == '__main__':
 	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
 
 	# manual_test(prices_df)
-	log_file_name = (f'logs/backtest_test_120trades_target5.log')
+	log_file_name = (f'logs/backtest_test_60trades_target20.log')
 	SetLogging(log_file_name)
 	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
 	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
-	backtest_test(prices_df, num_good_combs_to_choose=200, min_val_net_return=0.1, min_val_num_trades=120)
+	backtest_test(prices_df, num_good_combs_to_choose=200, min_val_net_return=0.1, min_val_num_trades=60)
 	logging.info('Finished')
 	# run_consecutive_backtests()
