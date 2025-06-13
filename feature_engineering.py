@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 from catboost import CatBoostRegressor
 from hurst import compute_Hc
-# from pmdarima.arima import auto_arima, ADFTest
 
 from utils.helpers import DaysWindowToPeriods
 
@@ -165,6 +164,7 @@ def add_spread_above_pred(feats_df: pd.DataFrame):
 
 	return local_feats_df, categorical_features
 
+
 def clean(feats_df: pd.DataFrame):
 	df = feats_df.copy()
 
@@ -176,7 +176,8 @@ def clean(feats_df: pd.DataFrame):
 
 	return df
 
-def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_windows_days_list: list[int], end_train_date: datetime) -> pd.DataFrame:
+def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_windows_days_list: list[int], end_train_date: datetime) -> tuple[pd.DataFrame,
+																																		 list[str]]:
 	# logging.info(f'Start adding features for {combination}')
 
 	data = feats_df.copy()
@@ -188,19 +189,26 @@ def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_wi
 	base_features = data.columns.tolist()
 	for rolling_window_days in rolling_windows_days_list:
 		window_periods = DaysWindowToPeriods(data, rolling_window_days)
+
 		data, zscore_categorical_features = add_zscores(data, window_periods, feat_columns=base_features)
+		all_categorical_features.extend(zscore_categorical_features)
+
+
 		data = add_rolling_hurst(data, window_periods)
 		# NOTE: Additional features
 		# NOTE: Remove this if not helpful
 		data = add_rolling_stats(data, combination, window_periods)
 
-		all_categorical_features.extend(zscore_categorical_features)
 
+	# Passing already created categorical features to catboost spread prediction
 	data = add_catboost_spread_prediction(data, end_train_date, all_categorical_features)
 
 	data, catboostpred_categorical_features = add_spread_above_pred(data)
 	all_categorical_features.extend(catboostpred_categorical_features)
 
 	data = clean(data)
+
+	convert_dict = {col: 'int' for col in all_categorical_features}
+	data = data.astype(convert_dict)
 
 	return data, all_categorical_features

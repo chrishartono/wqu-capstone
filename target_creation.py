@@ -1,4 +1,5 @@
 import logging
+import sys
 from enum import IntEnum
 
 import numpy as np
@@ -96,12 +97,13 @@ def AddClassificationOLSTarget(feats_df: pd.DataFrame,
 	# x_values = np.arange(window)
 	# X = sm.add_constant(x_values)
 	i = 0
-	while i + 1 + window < len(values) and window >= 24 * 2:
+	while i + 1 + window < len(values) and window >= 12:
+		date = feats_df.index[i]
 		current_value = values[i]
 		future_values = values[i + 1 : i + 1 + window]
 
-		future_above_points = future_values[(future_values - current_value) / current_value >= exceedance_thresh_frac]
-		future_below_points = future_values[(current_value - future_values) / current_value >= exceedance_thresh_frac]
+		future_above_points = future_values[(future_values - current_value) / abs(current_value) >= exceedance_thresh_frac]
+		future_below_points = future_values[(current_value - future_values) / abs(current_value) >= exceedance_thresh_frac]
 		above_points_frac = len(future_above_points) / len(future_values)
 		below_points_frac = len(future_below_points) / len(future_values)
 
@@ -129,7 +131,7 @@ def AddClassificationOLSTarget(feats_df: pd.DataFrame,
 	feats_target_df = feats_df.copy()
 	feats_target_df[resulting_target_column] = target
 
-	# fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 6))
+	# fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(30, 15))
 	# ax.plot(feats_target_df.index, feats_target_df[target_col], 'b-')
 	#
 	# buys_mask = feats_target_df[resulting_target_column] == SignalTypes.BUY.value
@@ -145,5 +147,6 @@ def AddClassificationOLSTarget(feats_df: pd.DataFrame,
 	# plt.tight_layout()
 	# fig.savefig(f'{combination}_target.png')
 	# plt.show()
+	# sys.exit(0)
 
 	return feats_target_df
