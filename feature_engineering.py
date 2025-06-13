@@ -140,8 +140,8 @@ def add_catboost_spread_prediction(feats_df: pd.DataFrame, end_train_date: datet
 		'learning_rate': 0.1, 
 		'thread_count':1,
 		'random_state': 233,
-		'rsm': 0.8,
-		'reg_lambda': 0.5
+		# 'rsm': 0.8,
+		# 'reg_lambda': 0.5,
 	}
 	clf = CatBoostRegressor(verbose=0, cat_features=added_categorical_features, **catboost_hyperparameters)
 	clf.fit(X=X_train, y=y_train)
@@ -176,8 +176,11 @@ def clean(feats_df: pd.DataFrame):
 
 	return df
 
-def AddFeatures(feats_df: pd.DataFrame, combination: tuple[str, str], rolling_windows_days_list: list[int], end_train_date: datetime) -> tuple[pd.DataFrame,
-																																		 list[str]]:
+def AddFeatures(feats_df: pd.DataFrame,
+				combination: tuple[str, str],
+				rolling_windows_days_list: list[int],
+				end_train_date: datetime) -> \
+				tuple[pd.DataFrame, list[str]]:
 	# logging.info(f'Start adding features for {combination}')
 
 	data = feats_df.copy()
