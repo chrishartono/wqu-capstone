@@ -20,14 +20,17 @@ from sklearn.utils import compute_class_weight
 from statsmodels.tsa.arima.model import ARIMA
 
 from top_model import TopModelArima, TopModelType
-from utils.helpers import DaysWindowToPeriods, LogValueCounts
+from utils.helpers import CountAlternatingNonZeroSequences, DaysWindowToPeriods, LogValueCounts
 
 catboost_hyperparameters = {
 		'depth'        : 5,
-		'iterations'   : 1000,
+		'iterations'   : 1000, # 100
 		'loss_function': 'MultiClass',
-		'learning_rate': 0.01,
+		'learning_rate': 0.01, # 0.1
 		'random_state' : 13579
+		# 'rsm': 0.8,
+		# 'reg_lambda': 0.5
+		# 'thread_count': 1
 		}
 
 
@@ -181,34 +184,46 @@ def save_clf_results(combination: tuple[str, str],
 	save_feature_importance(combination, clf, columns)
 
 
-def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], val_window_days: int):
+def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], val_window_days: int, categorical_features: list[str], use_gpu: bool):
 	logging.info(f'Start bottom model training for {combination}')
 
-	# val_window_periods = DaysWindowToPeriods(train, val_window_days)
+	val_window_periods = DaysWindowToPeriods(train, val_window_days)
 
-	# val = train.iloc[-val_window_periods:]
-	# train = train.iloc[:len(train) - val_window_periods]
-
+	val = train.iloc[-val_window_periods:]
+	train = train.iloc[:len(train) - val_window_periods]
+	
+	# Exclude non-scaled close price
+	# close_columns = [col for col in train.columns if col.__contains__('close') and col.count('_') == 1]
+	# X_train = train.drop(columns=['TARGET'] + close_columns)
+	# X_test = test.drop(columns=['TARGET'] + close_columns)
 	X_train = train.drop(columns=['TARGET'])
-	# X_val = val.drop(columns=['TARGET'])
+	X_val = val.drop(columns=['TARGET'])
 	X_test = test.drop(columns=['TARGET'])
 	y_train = train['TARGET']
-	# y_val = val['TARGET']
+	y_val = val['TARGET']
 	y_test = test['TARGET']
 
-	# classes = np.unique(y_train)
-	# weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train)
-	# class_weights = dict(zip(classes, weights))
+	# sys.exit(0)
 
 	LogValueCounts(y_train.unique(), y_train.value_counts(sort=False).values, 'Train', len(y_train))
 
+	if use_gpu:
+		catboost_hyperparameters['task_type'] = 'GPU'
+		catboost_hyperparameters['devices'] = '0'
+
 	# clf = CatBoostClassifier(verbose=0, class_weights=class_weights, **catboost_hyperparameters)
-	clf = CatBoostClassifier(verbose=0, **catboost_hyperparameters)
-	# clf.fit(X=X_train, y=y_train, eval_set=(X_val, y_val), early_stopping_rounds=20)
-	clf.fit(X=X_train, y=y_train)
+	clf = CatBoostClassifier(verbose=0, cat_features=categorical_features, **catboost_hyperparameters)
+	clf.fit(X=X_train, y=y_train, eval_set=(X_val, y_val), early_stopping_rounds=20)
+	# clf.fit(X=X_train, y=y_train)
 
 	logging.info(f'Making predictions for {len(X_test)} rows')
 	y_pred = clf.predict(X_test)
+
+	train_signal_density = CountAlternatingNonZeroSequences(y_train) / (len(y_train) / 24)
+	test_signal_density = CountAlternatingNonZeroSequences(y_test) / (len(y_test) / 24)
+	pred_signal_density = CountAlternatingNonZeroSequences(y_pred) / (len(y_pred) / 24)
+
+	logging.info(f'{train_signal_density=:.3f} {test_signal_density=:.3f} {pred_signal_density=:.3f}')
 
 	# y_probs = clf.predict_proba(X_test)
 	# save_clf_results(combination, clf, list(X_train.columns), y_train, y_test, y_probs, y_pred)
@@ -221,7 +236,7 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 	return y_pred, clf
 
 
-def ResearchTrain(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str]):
+def ResearchTrain(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], categorical_features: list[str], use_gpu: bool):
 	logging.info(f'Start bottom model training for {combination}')
 
 	X_train = train.drop(columns=['TARGET'])
@@ -234,8 +249,14 @@ def ResearchTrain(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, co
 	tuner = ClassificationThresholdTuner()
 
 	LogValueCounts(y_train.unique(), y_train.value_counts(sort=False).values, 'Train', len(y_train))
-	clf = CatBoostClassifier(verbose=0, **catboost_hyperparameters)
-	clf.fit(X=X_train, y=y_train)
+
+	if use_gpu:
+		catboost_hyperparameters['task_type'] = 'GPU'
+		catboost_hyperparameters['devices'] = '0'
+
+	clf = CatBoostClassifier(verbose=0, cat_features=categorical_features, **catboost_hyperparameters)
+	# clf.fit(X=X_train, y=y_train)
+	clf.fit(X=X_train, y=y_train, eval_set=(X_val, y_val), early_stopping_rounds=20)
 	# y_pred = clf.predict(X_test)
 	y_val_probs = clf.predict_proba(X_val)
 	y_test_probs = clf.predict_proba(X_test)
@@ -304,6 +325,9 @@ def Predict(data: pd.DataFrame,
 			model, combination: tuple[str, str],
 			use_top_model: TopModelType):
 	logging.info(f'Start bottom model training for {combination}')
+	# Exclude non-scaled close price
+	# close_columns = [col for col in data.columns if col.__contains__('close') and col.count('_') == 1]
+	# X = data.drop(columns=['TARGET']+close_columns)
 	X = data.drop(columns=['TARGET'])
 	y_pred = model.predict(X)
 

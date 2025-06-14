@@ -48,7 +48,7 @@ class TopModelArima:
 			std = np.std(res.resid)
 
 			# pause the trade if the spread crosses the upper threshold
-			threshold = np.quantile(self.__std_history, q=0.75)
+			threshold = np.quantile(self.__std_history, q=0.9)
 			pred.append(1 if std < threshold else 0)
 
 			self.__std_history.append(std)

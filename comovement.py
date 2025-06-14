@@ -17,6 +17,7 @@ class ComovementType(IntEnum):
 	COINTEGRATION = 0
 	GRANGER_CAUSALITY = 1
 	GC_MI = 2
+	COINT_MI = 3
 
 def test_cointegration(prices_df: pd.DataFrame, combination: tuple[str, str], significance_level=0.05) -> \
 		tuple[bool, tuple[str, str], PhillipsOuliarisTestResults]:
@@ -94,7 +95,7 @@ def test_mutual_information(prices_df: pd.DataFrame, combination: tuple[str, str
 	x = prices_df[combination[0]].to_numpy().reshape(-1, 1)
 	y = prices_df[combination[1]].to_numpy()
 	try:
-		score = mutual_info_regression(x, y)[0]
+		score = mutual_info_regression(x, y, random_state=35)[0]
 	except Exception as e:
 		logging.error(e)
 		return False
@@ -124,7 +125,16 @@ def TestCombinationComovement(prices_df: pd.DataFrame, combination: tuple[str, s
 		is_granger_caused, combination, coint_vector = test_granger_causality(prices_df, combination)
 
 		if is_granger_caused:
-			mi_score = test_mutual_information(prices_df, combination) if is_granger_caused else False
+			mi_score = test_mutual_information(prices_df, combination)
+			if mi_score > 0:
+				return True, combination, coint_vector, mi_score
+
+		return False, combination, coint_vector, mi_score
+	elif comovement_type == ComovementType.COINT_MI:
+		is_cointegrated, combination, coint_vector = test_cointegration(prices_df, combination)
+
+		if is_cointegrated:
+			mi_score = test_mutual_information(prices_df, combination)
 			if mi_score > 0:
 				return True, combination, coint_vector, mi_score
 
