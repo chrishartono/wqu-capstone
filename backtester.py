@@ -635,6 +635,7 @@ class Backtester:
 
 		val_comb_metrics_tups = []
 		for stats_df, val_metrics, test_id in trading_results:
+			combination, coefs_df_test, model, comb_test, comb_val = return_structs_by_id[test_id]
 			val_comb_metrics_tups.append((combination, val_metrics, coefs_df_test, model, comb_test, comb_val))
 
 		val_comb_metrics_tups.sort(key=lambda x: x[1]['annualized_net_return'], reverse=True)
