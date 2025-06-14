@@ -184,37 +184,37 @@ def save_clf_results(combination: tuple[str, str],
 	save_feature_importance(combination, clf, columns)
 
 
-def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], val_window_days: int, categorical_features: list[str]):
+def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], val_window_days: int, categorical_features: list[str], use_gpu: bool):
 	logging.info(f'Start bottom model training for {combination}')
 
-	# val_window_periods = DaysWindowToPeriods(train, val_window_days)
+	val_window_periods = DaysWindowToPeriods(train, val_window_days)
 
-	# val = train.iloc[-val_window_periods:]
-	# train = train.iloc[:len(train) - val_window_periods]
+	val = train.iloc[-val_window_periods:]
+	train = train.iloc[:len(train) - val_window_periods]
 	
 	# Exclude non-scaled close price
 	# close_columns = [col for col in train.columns if col.__contains__('close') and col.count('_') == 1]
 	# X_train = train.drop(columns=['TARGET'] + close_columns)
-	X_train = train.drop(columns=['TARGET'])
-	# X_val = val.drop(columns=['TARGET'])
 	# X_test = test.drop(columns=['TARGET'] + close_columns)
+	X_train = train.drop(columns=['TARGET'])
+	X_val = val.drop(columns=['TARGET'])
 	X_test = test.drop(columns=['TARGET'])
 	y_train = train['TARGET']
-	# y_val = val['TARGET']
+	y_val = val['TARGET']
 	y_test = test['TARGET']
-	# classes = np.unique(y_train)
-	# weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train)
-	# class_weights = dict(zip(classes, weights))
 
-	# logging.info(f'{train_signal_density=:.3f} {test_signal_density=:.3f}')
 	# sys.exit(0)
 
 	LogValueCounts(y_train.unique(), y_train.value_counts(sort=False).values, 'Train', len(y_train))
 
+	if use_gpu:
+		catboost_hyperparameters['task_type'] = 'GPU'
+		catboost_hyperparameters['devices'] = '0'
+
 	# clf = CatBoostClassifier(verbose=0, class_weights=class_weights, **catboost_hyperparameters)
 	clf = CatBoostClassifier(verbose=0, cat_features=categorical_features, **catboost_hyperparameters)
-	# clf.fit(X=X_train, y=y_train, eval_set=(X_val, y_val), early_stopping_rounds=20)
-	clf.fit(X=X_train, y=y_train)
+	clf.fit(X=X_train, y=y_train, eval_set=(X_val, y_val), early_stopping_rounds=20)
+	# clf.fit(X=X_train, y=y_train)
 
 	logging.info(f'Making predictions for {len(X_test)} rows')
 	y_pred = clf.predict(X_test)
@@ -236,7 +236,7 @@ def Train(train: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str],
 	return y_pred, clf
 
 
-def ResearchTrain(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], categorical_features: list[str]):
+def ResearchTrain(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, combination: tuple[str, str], categorical_features: list[str], use_gpu: bool):
 	logging.info(f'Start bottom model training for {combination}')
 
 	X_train = train.drop(columns=['TARGET'])
@@ -249,8 +249,14 @@ def ResearchTrain(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, co
 	tuner = ClassificationThresholdTuner()
 
 	LogValueCounts(y_train.unique(), y_train.value_counts(sort=False).values, 'Train', len(y_train))
+
+	if use_gpu:
+		catboost_hyperparameters['task_type'] = 'GPU'
+		catboost_hyperparameters['devices'] = '0'
+
 	clf = CatBoostClassifier(verbose=0, cat_features=categorical_features, **catboost_hyperparameters)
-	clf.fit(X=X_train, y=y_train)
+	# clf.fit(X=X_train, y=y_train)
+	clf.fit(X=X_train, y=y_train, eval_set=(X_val, y_val), early_stopping_rounds=20)
 	# y_pred = clf.predict(X_test)
 	y_val_probs = clf.predict_proba(X_val)
 	y_test_probs = clf.predict_proba(X_test)

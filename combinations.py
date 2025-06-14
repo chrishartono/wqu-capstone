@@ -33,7 +33,7 @@ def CreateAllPossibleCombinations(prices_df: pd.DataFrame):
 		combs_set.add((c0, c1))
 		combs_set.add((c1, c0))
 		pair_combinations.append((c0, c1))
-		pair_combinations.append((c1, c0))
+		# pair_combinations.append((c1, c0))
 
 	logging.info(f'Created total number of combinations: {len(pair_combinations)}')
 	return pair_combinations
