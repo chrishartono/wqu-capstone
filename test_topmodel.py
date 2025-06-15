@@ -1,8 +1,10 @@
-
+#%%
 #test 
 from hmmlearn import hmm
 from top_model import TopModelHMM,TopModelArima
 from spread import AddPolyfitSpread
+import pandas as pd
+import numpy as np
 
 #%%
 prices_df = pd.read_parquet('dataset/binance_1h_ohlcv_2021-2025.parquet')
@@ -46,11 +48,11 @@ pre_data = spread_df.iloc[:train_idx].copy()
 test_data = spread_df.iloc[train_idx:].copy()
 
 # %%
-top_hmm = TopModelHMM(pre_data, window=24, reference_column='spread')
-preds = top_hmm.predict(test_data)
-print(preds[:10])
+# top_hmm = TopModelHMM(pre_data, window=24, reference_column='spread')
+# preds = top_hmm.predict(test_data)
+# print(preds[:10])
 
 # %%
-top_arima = TopModelArima(pre_data, window=24, reference_column='spread')
-arima_preds = top_arima.predict(test_data)
-print(arima_preds[:10])
+# top_arima = TopModelArima(pre_data, window=24, reference_column='spread')
+# arima_preds = top_arima.predict(test_data)
+# print(arima_preds[:10])

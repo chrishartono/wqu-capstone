@@ -1,9 +1,11 @@
+#%%
 import logging
 import os
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
+import test_topmodel
 
 from backtester import Backtester
 from startup_helpers import IsLoggingConfigured, ResetLogFileHandler, SetLogging
@@ -44,7 +46,8 @@ def manual_test(prices_df: pd.DataFrame):
 	# window_rows = int(len(train) / 20)
 	# feats_df = AddPeakNeighboursSingleColumn(feats_df, combination, target_col='spread', period=window_rows, resulting_target_column='TARGET', numNeighbours=10)
 
-def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_val_net_return: float, min_val_num_trades: int):
+
+def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_val_net_return: float, min_val_num_trades: int, use_top_model=TopModelType.HMM):
 
 	all_possible_combinations = CreateAllPossibleCombinations(prices_df)
 	# np.random.shuffle(all_possible_combinations)
@@ -84,7 +87,7 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 							target_params=target_params,
 							close_on_no_signal=False,
 							spread_window=spread_window,
-							use_parallelization=True,
+							use_parallelization=False,
 							use_gpu=True)
 	backtester.Run()
 
@@ -198,6 +201,8 @@ def run_consecutive_ml_quality_tests():
 										target_window, use_jump_features, use_copula_features, spread_window, filename, use_slice)
 						logging.info('Finished')
 
+#%%
+
 if __name__ == '__main__':
 	now_str = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
 	os.makedirs('logs', exist_ok=True)
@@ -211,8 +216,9 @@ if __name__ == '__main__':
 	# manual_test(prices_df)
 	log_file_name = (f'logs/backtest_test_60trades_target20_500combs.log')
 	SetLogging(log_file_name)
-	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
-	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
+	# prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
+	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
 	backtest_test(prices_df, num_good_combs_to_choose=500, min_val_net_return=0.1, min_val_num_trades=60)
 	logging.info('Finished')
 	# run_consecutive_backtests()
+# %%

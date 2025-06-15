@@ -5,6 +5,8 @@ from enum import IntEnum
 from statsmodels.tsa.arima.model import ARIMA
 from tqdm import tqdm
 from hmmlearn import hmm
+from spread import AddPolyfitSpread
+
 
 class TopModelType(IntEnum):
 	HMM = 0
@@ -90,23 +92,30 @@ class TopModelHMM:
             else:
                 window_data = data[self.__reference_column].values[i - self.__window:i].reshape(-1, 1)
 
-            # Re-fit HMM
-            hmm_model = self.fit_hmm(window_data)
-            hidden_states = hmm_model.predict(window_data)
+            # Remove NaNs
+            window_data = window_data[~np.isnan(window_data).flatten()].reshape(-1, 1)
+            # Ensure enough data for HMM
+            if len(window_data) < self.__n_components:
+                pred.append(0)
+                continue
 
-            # we need lower variance to allow trading
-            means = hmm_model.means_.flatten()
-            covars = hmm_model.covars_.flatten()
-            low_var_state = np.argmin(covars)
-            
-            current_state = hidden_states[-1]
-            pred.append(1 if current_state == low_var_state else 0)
+            try:
+                # Re-fit HMM
+                hmm_model = self.fit_hmm(window_data)
+                hidden_states = hmm_model.predict(window_data)
+                means = hmm_model.means_.flatten()
+                covars = hmm_model.covars_.flatten()
+                low_var_state = np.argmin(covars)
+                current_state = hidden_states[-1]
+                pred.append(1 if current_state == low_var_state else 0)
+            except Exception as e:
+                # If fitting or prediction fails, skip this window
+                pred.append(0)
+                continue
 
         return pred
 
 #test 
-from hmmlearn import hmm
-from spread import AddPolyfitSpread
 
 #%%
 prices_df = pd.read_parquet('dataset/binance_1h_ohlcv_2021-2025.parquet')
@@ -152,13 +161,13 @@ pre_data = spread_df.iloc[:train_idx].copy()
 test_data = spread_df.iloc[train_idx:].copy()
 
 # %%
-top_hmm = TopModelHMM(pre_data, window=24, reference_column='spread')
-preds = top_hmm.predict(test_data)
-print(preds[:10])
+# top_hmm = TopModelHMM(pre_data, window=24, reference_column='spread')
+# preds = top_hmm.predict(test_data)
+# print(preds[:10])
 
 # %%
-top_arima = TopModelArima(pre_data, window=24, reference_column='spread')
-arima_preds = top_arima.predict(test_data)
-print(arima_preds[:10])
+# top_arima = TopModelArima(pre_data, window=24, reference_column='spread')
+# arima_preds = top_arima.predict(test_data)
+# print(arima_preds[:10])
 
 # %%

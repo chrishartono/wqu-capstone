@@ -145,11 +145,91 @@ class Backtester:
 
 		return date_bounds
 
+	# def prepare_combination_data(self,
+	# 							 data: pd.DataFrame,
+	# 							 combination: tuple[str, str],
+	# 							 coint_vector: PhillipsOuliarisTestResults,
+	# 							 end_train_date: datetime):
+	# 	coefs_vector = None
+	# 	try:
+	# 		# logging.info(f'Start adding spread for {combination}')
+	# 		# data = AddCointCoefSpread(data, combination, coint_vector)
+	# 		# data = AddPriceChangeSpread(data, combination)
+	# 		data, coefs_vector = AddRollingOLSSpread(data, combination, self.__spread_window)
+
+	# 		# logging.info(f'Start adding features for {combination}')
+	# 		data, categorical_features = AddFeatures(data,
+	# 												 combination,
+	# 												 self.__features_rolling_windows_days_list,
+	# 												 end_train_date)
+
+	# 		data = self.__AddTargetFunc(data, combination, target_col='spread', resulting_target_column='TARGET', target_params=self.__target_params)
+
+	# 		# logging.info(f'Start adding target for {combination}')
+
+	# 		if coefs_vector is None:
+	# 			c0 = combination[0]
+	# 			c1 = combination[1]
+	# 			coefs_vector = {c0: np.full(len(data), fill_value=coint_vector[c0]), c1: np.full(len(data), fill_value=coint_vector[c1])}
+
+	# 		coefs_df = pd.DataFrame(coefs_vector, index=data.index)
+
+	# 		logging.info(f'Finished data creation for {combination}')
+	# 	except:
+	# 		logging.exception(f'Error adding features for {combination}')
+	# 		# del data
+	# 		# gc.collect()
+	# 		return None, combination, None, None
+
+	# 	# gc.collect()
+	# 	return data, combination, coefs_df, categorical_features
+
+	# def __prepare_all_combination_datas(self, good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]],
+	# 									data: pd.DataFrame,
+	# 									end_train_date: datetime):
+	# 	logging.info(f'Start features and target preparations for {len(good_combinations)} combinations on '
+	# 				 f'data set from {data.index[0]} to {data.index[-1]}')
+
+	# 	params = []
+	# 	for comb, coint_vector in good_combinations:
+	# 		pair1 = comb[0].split('_')[1]
+	# 		pair2 = comb[1].split('_')[1]
+	# 		comb_columns = [col for col in data.columns if pair1 in col or pair2 in col]
+	# 		params.append((data[comb_columns], comb, coint_vector, end_train_date))
+
+	# 	all_results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
+	# 				   (delayed(self.prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc=f"Train data preparations")))
+	# 	# all_results = parallel(delayed(self.prepare_combination_data)(*p) for p in params)
+
+	# 	# batch_size = multiprocessing.cpu_count()
+	# 	# all_results = []
+	# 	#
+	# 	# for batch_num, i in enumerate(range(0, len(params), batch_size)):
+	# 	# 	batch_params = params[i:i + batch_size]
+	# 	#
+	# 	# 	# results = (Parallel(n_jobs=self.__n_jobs, prefer="processes", backend='multiprocessing')
+	# 	# 	# 		   (delayed(self.prepare_combination_data)(*p) for p in
+	# 	# 	# 			tqdm(batch_params, total=len(batch_params), desc=f"Batch {batch_num}. Train data preparations:")))
+	# 	#
+	# 	# 	results = (parallel(n_jobs=self.__n_jobs, prefer="processes", backend='multiprocessing')
+	# 	# 			   (delayed(self.prepare_combination_data)(*p) for p in
+	# 	# 				tqdm(batch_params, total=len(batch_params), desc=f"Batch {batch_num}. Train data preparations:")))
+	# 	#
+	# 	# 	results = [tup for tup in results if tup is not None and tup[0] is not None]
+	# 	# 	logging.info(f'Got {len(results)} data tuples for batch {batch_num}')
+	# 	#
+	# 	# 	all_results.extend(results)
+
+	# 	# logging.info('Waiting for loky workers to shutdown')
+	# 	# get_reusable_executor().shutdown(wait=True)
+
+	# 	return all_results
+ 
 	def prepare_combination_data(self,
-								 data: pd.DataFrame,
-								 combination: tuple[str, str],
-								 coint_vector: PhillipsOuliarisTestResults,
-								 end_train_date: datetime):
+								data: pd.DataFrame,
+								combination: tuple[str, str],
+								coint_vector: PhillipsOuliarisTestResults,
+								end_train_date: datetime):
 		coefs_vector = None
 		try:
 			# logging.info(f'Start adding spread for {combination}')
@@ -159,9 +239,9 @@ class Backtester:
 
 			# logging.info(f'Start adding features for {combination}')
 			data, categorical_features = AddFeatures(data,
-													 combination,
-													 self.__features_rolling_windows_days_list,
-													 end_train_date)
+													combination,
+													self.__features_rolling_windows_days_list,
+													end_train_date)
 
 			data = self.__AddTargetFunc(data, combination, target_col='spread', resulting_target_column='TARGET', target_params=self.__target_params)
 
@@ -175,55 +255,14 @@ class Backtester:
 			coefs_df = pd.DataFrame(coefs_vector, index=data.index)
 
 			logging.info(f'Finished data creation for {combination}')
-		except:
+		except Exception as e:
+			print(f"\n--- EXCEPTION in prepare_combination_data for {combination}: {e} ---", flush=True)
+			import traceback; traceback.print_exc()
 			logging.exception(f'Error adding features for {combination}')
-			# del data
-			# gc.collect()
 			return None, combination, None, None
 
-		# gc.collect()
 		return data, combination, coefs_df, categorical_features
 
-	def __prepare_all_combination_datas(self, good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]],
-										data: pd.DataFrame,
-										end_train_date: datetime):
-		logging.info(f'Start features and target preparations for {len(good_combinations)} combinations on '
-					 f'data set from {data.index[0]} to {data.index[-1]}')
-
-		params = []
-		for comb, coint_vector in good_combinations:
-			pair1 = comb[0].split('_')[1]
-			pair2 = comb[1].split('_')[1]
-			comb_columns = [col for col in data.columns if pair1 in col or pair2 in col]
-			params.append((data[comb_columns], comb, coint_vector, end_train_date))
-
-		all_results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
-					   (delayed(self.prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc=f"Train data preparations")))
-		# all_results = parallel(delayed(self.prepare_combination_data)(*p) for p in params)
-
-		# batch_size = multiprocessing.cpu_count()
-		# all_results = []
-		#
-		# for batch_num, i in enumerate(range(0, len(params), batch_size)):
-		# 	batch_params = params[i:i + batch_size]
-		#
-		# 	# results = (Parallel(n_jobs=self.__n_jobs, prefer="processes", backend='multiprocessing')
-		# 	# 		   (delayed(self.prepare_combination_data)(*p) for p in
-		# 	# 			tqdm(batch_params, total=len(batch_params), desc=f"Batch {batch_num}. Train data preparations:")))
-		#
-		# 	results = (parallel(n_jobs=self.__n_jobs, prefer="processes", backend='multiprocessing')
-		# 			   (delayed(self.prepare_combination_data)(*p) for p in
-		# 				tqdm(batch_params, total=len(batch_params), desc=f"Batch {batch_num}. Train data preparations:")))
-		#
-		# 	results = [tup for tup in results if tup is not None and tup[0] is not None]
-		# 	logging.info(f'Got {len(results)} data tuples for batch {batch_num}')
-		#
-		# 	all_results.extend(results)
-
-		# logging.info('Waiting for loky workers to shutdown')
-		# get_reusable_executor().shutdown(wait=True)
-
-		return all_results
 
 	def __update_stats(self,
 					   prices,
@@ -617,8 +656,9 @@ class Backtester:
 		parallel_params = []
 		return_structs_by_id = dict()
 		for i, (comb_data, combination, coefs_df, categorical_features) in \
-			tqdm(enumerate(data_tuples), total=len(data_tuples), desc=f"ML Train"):
-
+    tqdm(enumerate(data_tuples), total=len(data_tuples), desc=f"ML Train"):
+			if comb_data is None:
+				continue  # Skip if data preparation failed
 			comb_train = comb_data[(comb_data.index > start_date) & (comb_data.index <= end_train_date)]
 			comb_val = comb_data[(comb_data.index > end_train_date) & (comb_data.index <= end_val_date)]
 			comb_test = comb_data[(comb_data.index > end_val_date) & (comb_data.index <= end_test_date)]
@@ -695,6 +735,7 @@ class Backtester:
 			# sys.exit(0)
 
 			data_tuples = self.__prepare_all_combination_datas(good_combinations, all_slice, end_train_date)
+			data_tuples = [tup for tup in data_tuples if tup is not None and tup[0] is not None]  # <-- Add this line
 			val_comb_metrics_tups = self.__get_val_metrics(data_tuples, start_date, end_train_date, end_val_date, end_test_date)
 			combinations_to_trade = self.__choose_best_combinations(val_comb_metrics_tups)
 
