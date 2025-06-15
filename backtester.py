@@ -56,7 +56,7 @@ class Backtester:
 
 		self.__backtest_id = str(uuid.uuid4())
 		logging.info(f'Backtest_id={self.__backtest_id} {train_window_days=} {trade_window_days=} {min_val_net_return=} {min_val_num_trades=} '
-					 f'{num_good_combs_to_choose=} {target_params=} {close_on_no_signal=}')
+					 f'{num_good_combs_to_choose=} {target_params=} {close_on_no_signal=} {use_top_model=}')
 
 		self.__prices_df = prices_df
 		self.__train_window_days = train_window_days
@@ -635,6 +635,7 @@ class Backtester:
 
 		val_comb_metrics_tups = []
 		for stats_df, val_metrics, test_id in trading_results:
+			combination, coefs_df_test, model, comb_test, comb_val = return_structs_by_id[test_id]
 			val_comb_metrics_tups.append((combination, val_metrics, coefs_df_test, model, comb_test, comb_val))
 
 		val_comb_metrics_tups.sort(key=lambda x: x[1]['annualized_net_return'], reverse=True)

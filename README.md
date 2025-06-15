@@ -94,4 +94,14 @@ This dataset contains 5 years of hourly cryptoccurencies data retrieved from Bin
      Top model definition and related functionalities.
 
 ## 4. Result Snapshot
-TODO
+
+Reference: [complete backtest results and figures](https://www.google.com/url?q=https://www.dropbox.com/scl/fi/xrqfe46719laulexo9tfe/2025-06-14_21-16-08_257c32fd-c6d4-4f0c-b762-453847a10619.zip?rlkey%3Di3rlwg6cemqxt9idbh0obx7k3%26e%3D1%26dl%3D0&sa=D&source=docs&ust=1749963493037484&usg=AOvVaw0FRnBIrfGFlnsgyA2AMj6a)
+
+| ![aggregated](./images/backtest_aggregated_result.jpg) |
+|:--:| 
+| Final aggregated ML driven pair trading stragegy result. |
+
+| ![sample pair](./images/backtest_pair_sample_result.jpg) |
+|:--:| 
+| A sample of the pair trading simulation over time. |
+

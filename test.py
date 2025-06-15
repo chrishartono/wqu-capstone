@@ -56,7 +56,7 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 	# all_possible_combinations_slice = [('close_powr-usdt', 'close_algo-usdt'), ('close_troy-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_clv-usdt'),
 	# 								   ('close_rei-usdt', 'close_algo-usdt'), ('close_voxel-usdt', 'close_algo-usdt'), ('close_amp-usdt', 'close_bico-usdt'),
 	# 								   ('close_badger-usdt', 'close_ach-usdt'), ('close_amp-usdt', 'close_celo-usdt'), ('close_rei-usdt', 'close_ach-usdt')]
-	train_window_days = 660
+	train_window_days = 720
 	val_window_days = 60
 	trade_window_days = 60
 	spread_window = 5
@@ -79,7 +79,7 @@ def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_va
 							min_val_net_return=min_val_net_return,
 							min_val_num_trades=min_val_num_trades,
 							num_good_combs_to_choose=num_good_combs_to_choose,
-							use_top_model=None,
+							use_top_model=TopModelType.ARIMA,
 							target_type=TargetType.OLS_CLF,
 							target_params=target_params,
 							close_on_no_signal=False,
@@ -209,10 +209,10 @@ if __name__ == '__main__':
 	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
 
 	# manual_test(prices_df)
-	log_file_name = (f'logs/backtest_test_60trades_target20_500combs.log')
+	log_file_name = (f'logs/backtest_test_30trades_target20_200combs_arima_alldata.log')
 	SetLogging(log_file_name)
 	prices_df = pd.read_csv('dataset/binance_1h_ohlcv_2021-2025.csv', index_col='date', parse_dates=True)
-	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
-	backtest_test(prices_df, num_good_combs_to_choose=500, min_val_net_return=0.1, min_val_num_trades=60)
+	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
+	backtest_test(prices_df, num_good_combs_to_choose=200, min_val_net_return=0.1, min_val_num_trades=30)
 	logging.info('Finished')
 	# run_consecutive_backtests()

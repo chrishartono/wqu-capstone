@@ -330,14 +330,19 @@ def Predict(data: pd.DataFrame,
 	# X = data.drop(columns=['TARGET']+close_columns)
 	X = data.drop(columns=['TARGET'])
 	y_pred = model.predict(X)
+	y_return = y_pred
 
-	if use_top_model == TopModelType.ARIMA:
-		top_model_arima = TopModelArima(pre_data=data_val, window=24, reference_column='spread')
-		y_pred_top_model = top_model_arima.predict(data)
+	try:
+		if use_top_model == TopModelType.ARIMA:
+			top_model_arima = TopModelArima(pre_data=data_val, window=24, reference_column='spread')
+			y_pred_top_model = top_model_arima.predict(data)
 
-		y_pred = apply_top_model_filter(y_signal=y_pred, y_filter=y_pred_top_model)
-	elif use_top_model == TopModelType.HMM:
-		# TODO
-		pass
+			y_return = apply_top_model_filter(y_signal=y_pred, y_filter=y_pred_top_model)
+		elif use_top_model == TopModelType.HMM:
+			# TODO
+			pass
+	except Exception as e:
+		logging.error(f'Exception while using top model {use_top_model} for {combination}: {str(e)}\nSkip top model filtering.')
+		y_return = y_pred
 
-	return y_pred
+	return y_return
