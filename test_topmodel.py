@@ -56,3 +56,4 @@ test_data = spread_df.iloc[train_idx:].copy()
 # top_arima = TopModelArima(pre_data, window=24, reference_column='spread')
 # arima_preds = top_arima.predict(test_data)
 # print(arima_preds[:10])
+

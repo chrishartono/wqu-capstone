@@ -96,8 +96,9 @@ class Backtester:
 		self.__n_jobs = -1 if use_parallelization else 1
 
 		# self.__catboost_parallelization_settings
-		self.__use_gpu = use_gpu
+		self.__use_gpu = False  # <--- Force CPU mode, driver issues....
 		self.__gpu_device = '0'
+
 
 		self.__main_path, self.__aggregated_path = self.__create_main_paths()
 
@@ -184,46 +185,46 @@ class Backtester:
 	# 	# gc.collect()
 	# 	return data, combination, coefs_df, categorical_features
 
-	# def __prepare_all_combination_datas(self, good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]],
-	# 									data: pd.DataFrame,
-	# 									end_train_date: datetime):
-	# 	logging.info(f'Start features and target preparations for {len(good_combinations)} combinations on '
-	# 				 f'data set from {data.index[0]} to {data.index[-1]}')
+	def __prepare_all_combination_datas(self, good_combinations: list[tuple[tuple[str, str], PhillipsOuliarisTestResults]],
+										data: pd.DataFrame,
+										end_train_date: datetime):
+		logging.info(f'Start features and target preparations for {len(good_combinations)} combinations on '
+					 f'data set from {data.index[0]} to {data.index[-1]}')
 
-	# 	params = []
-	# 	for comb, coint_vector in good_combinations:
-	# 		pair1 = comb[0].split('_')[1]
-	# 		pair2 = comb[1].split('_')[1]
-	# 		comb_columns = [col for col in data.columns if pair1 in col or pair2 in col]
-	# 		params.append((data[comb_columns], comb, coint_vector, end_train_date))
+		params = []
+		for comb, coint_vector in good_combinations:
+			pair1 = comb[0].split('_')[1]
+			pair2 = comb[1].split('_')[1]
+			comb_columns = [col for col in data.columns if pair1 in col or pair2 in col]
+			params.append((data[comb_columns], comb, coint_vector, end_train_date))
 
-	# 	all_results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
-	# 				   (delayed(self.prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc=f"Train data preparations")))
-	# 	# all_results = parallel(delayed(self.prepare_combination_data)(*p) for p in params)
+		all_results = (Parallel(n_jobs=self.__n_jobs, prefer="processes")
+					   (delayed(self.prepare_combination_data)(*p) for p in tqdm(params, total=len(params), desc=f"Train data preparations")))
+		# all_results = parallel(delayed(self.prepare_combination_data)(*p) for p in params)
 
-	# 	# batch_size = multiprocessing.cpu_count()
-	# 	# all_results = []
-	# 	#
-	# 	# for batch_num, i in enumerate(range(0, len(params), batch_size)):
-	# 	# 	batch_params = params[i:i + batch_size]
-	# 	#
-	# 	# 	# results = (Parallel(n_jobs=self.__n_jobs, prefer="processes", backend='multiprocessing')
-	# 	# 	# 		   (delayed(self.prepare_combination_data)(*p) for p in
-	# 	# 	# 			tqdm(batch_params, total=len(batch_params), desc=f"Batch {batch_num}. Train data preparations:")))
-	# 	#
-	# 	# 	results = (parallel(n_jobs=self.__n_jobs, prefer="processes", backend='multiprocessing')
-	# 	# 			   (delayed(self.prepare_combination_data)(*p) for p in
-	# 	# 				tqdm(batch_params, total=len(batch_params), desc=f"Batch {batch_num}. Train data preparations:")))
-	# 	#
-	# 	# 	results = [tup for tup in results if tup is not None and tup[0] is not None]
-	# 	# 	logging.info(f'Got {len(results)} data tuples for batch {batch_num}')
-	# 	#
-	# 	# 	all_results.extend(results)
+		# batch_size = multiprocessing.cpu_count()
+		# all_results = []
+		#
+		# for batch_num, i in enumerate(range(0, len(params), batch_size)):
+		# 	batch_params = params[i:i + batch_size]
+		#
+		# 	# results = (Parallel(n_jobs=self.__n_jobs, prefer="processes", backend='multiprocessing')
+		# 	# 		   (delayed(self.prepare_combination_data)(*p) for p in
+		# 	# 			tqdm(batch_params, total=len(batch_params), desc=f"Batch {batch_num}. Train data preparations:")))
+		#
+		# 	results = (parallel(n_jobs=self.__n_jobs, prefer="processes", backend='multiprocessing')
+		# 			   (delayed(self.prepare_combination_data)(*p) for p in
+		# 				tqdm(batch_params, total=len(batch_params), desc=f"Batch {batch_num}. Train data preparations:")))
+		#
+		# 	results = [tup for tup in results if tup is not None and tup[0] is not None]
+		# 	logging.info(f'Got {len(results)} data tuples for batch {batch_num}')
+		#
+		# 	all_results.extend(results)
 
-	# 	# logging.info('Waiting for loky workers to shutdown')
-	# 	# get_reusable_executor().shutdown(wait=True)
+		# logging.info('Waiting for loky workers to shutdown')
+		# get_reusable_executor().shutdown(wait=True)
 
-	# 	return all_results
+		return all_results
  
 	def prepare_combination_data(self,
 								data: pd.DataFrame,
@@ -256,10 +257,14 @@ class Backtester:
 
 			logging.info(f'Finished data creation for {combination}')
 		except Exception as e:
-			print(f"\n--- EXCEPTION in prepare_combination_data for {combination}: {e} ---", flush=True)
-			import traceback; traceback.print_exc()
-			logging.exception(f'Error adding features for {combination}')
+			logging.exception(f'Error adding features for {combination} - shape={data.shape} - columns={list(data.columns)}')
+			print(f"ERROR in prepare_combination_data for {combination}: {e}")
+			print(f"Data shape: {data.shape}")
+			print(f"Columns: {list(data.columns)}")
+			# Optionally save the data for inspection
+			data.head().to_csv(f"debug_fail_{combination[0]}_{combination[1]}.csv")
 			return None, combination, None, None
+  # gc.collect()
 
 		return data, combination, coefs_df, categorical_features
 

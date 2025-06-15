@@ -152,7 +152,7 @@ def ml_quality_test(prices_df: pd.DataFrame, train_window_days, val_window_days,
 							close_on_no_signal=False,
 							spread_window=spread_window,
 							use_parallelization=True,
-							use_gpu=True)
+							use_gpu=False)
 
 	all_aggr_values = backtester.MLPredictionQualityTest(desired_num_samples=desired_num_samples, filename=filename)
 	settings_aggr_values = [settings_dic | aggr for aggr in all_aggr_values]
@@ -212,6 +212,10 @@ if __name__ == '__main__':
 	# TODO: Test run
 	# prices_df = prices_df[(prices_df.index >= '2023-02-01') & (prices_df.index <= '2024-07-01')]
 	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
+	prices_df = pd.read_parquet('dataset/binance_1h_ohlcv_2021-2025.parquet')
+	prices_df = prices_df.set_index("date")
+
+	prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
 
 	# manual_test(prices_df)
 	log_file_name = (f'logs/backtest_test_60trades_target20_500combs.log')
@@ -220,5 +224,176 @@ if __name__ == '__main__':
 	# prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
 	backtest_test(prices_df, num_good_combs_to_choose=500, min_val_net_return=0.1, min_val_num_trades=60)
 	logging.info('Finished')
-	# run_consecutive_backtests()
+	#run_consecutive_backtests()
+
+
+# %%
+if __name__ == '__main__':
+    now_str = datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')
+    os.makedirs('logs', exist_ok=True)
+
+    # Load and ensure datetime index
+    prices_df = pd.read_parquet('dataset/binance_1h_ohlcv_2021-2025.parquet')
+    prices_df['date'] = pd.to_datetime(prices_df['date'], errors='coerce')  # Ensure 'date' is datetime
+    prices_df = prices_df.set_index("date")
+    prices_df = prices_df.sort_index()  # Ensure index is sorted
+    prices_df = prices_df.astype('float64')
+
+    # Filter by date range
+    #prices_df = prices_df[(prices_df.index >= '2022-01-01') & (prices_df.index <= '2024-09-01')]
+
+    # Check for empty DataFrame after filtering
+    if prices_df.empty:
+        raise ValueError(
+            f"Filtered prices_df is empty! Available date range: {prices_df.index.min()} to {prices_df.index.max()}"
+        )
+
+    log_file_name = (f'logs/backtest_test_60trades_target20_500combs.log')
+    SetLogging(log_file_name)
+
+    backtest_test(prices_df, num_good_combs_to_choose=500, min_val_net_return=0.1, min_val_num_trades=60)
+    logging.info('Finished')
+# %%
+def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_val_net_return: float, min_val_num_trades: int, use_top_model=TopModelType.HMM):
+
+    # Only this combination!
+    all_possible_combinations = [('close_vtho-usdt', 'close_win-usdt')]
+
+    train_window_days = 660
+    val_window_days = 60
+    trade_window_days = 60
+    spread_window = 5
+    target_window = 20
+    target_params = {'look_ahead_days': target_window, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
+
+    backtester = Backtester(
+        prices_df=prices_df,
+        train_window_days=train_window_days,
+        ml_val_window_days=trade_window_days,
+        trade_window_days=trade_window_days,
+        val_window_days=val_window_days,
+        features_rolling_windows_days_list=[1, 5, 10],
+        all_possible_combinations=all_possible_combinations,
+        comovement_detection_type=ComovementType.COINT_MI,
+        combination_limit=1000,
+        trade_limit=1000,
+        risk_free_rate=0,
+        fees=0.1 / 100,
+        min_val_net_return=min_val_net_return,
+        min_val_num_trades=min_val_num_trades,
+        num_good_combs_to_choose=num_good_combs_to_choose,
+        use_top_model=None,
+        target_type=TargetType.OLS_CLF,
+        target_params=target_params,
+        close_on_no_signal=False,
+        spread_window=spread_window,
+        use_parallelization=False,      # (set to False while debugging)
+    )
+    backtester.Run()
+
+# %%
+from top_model import TopModelType
+from comovement import ComovementType
+from target_creation import TargetType
+from backtester import Backtester
+import pandas as pd
+
+def backtest_test(prices_df: pd.DataFrame, num_good_combs_to_choose: int, min_val_net_return: float, min_val_num_trades: int, use_top_model=TopModelType.HMM):
+    #all_possible_combinations = [('close_vtho-usdt', 'close_win-usdt')]
+    all_possible_combinations = CreateAllPossibleCombinations(prices_df)
+    train_window_days = 660
+    val_window_days = 60
+    trade_window_days = 60
+    spread_window = 5
+    target_window = 20
+    target_params = {'look_ahead_days': target_window, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001}
+    backtester = Backtester(
+        prices_df=prices_df,
+        train_window_days=train_window_days,
+        ml_val_window_days=trade_window_days,
+        trade_window_days=trade_window_days,
+        val_window_days=val_window_days,
+        features_rolling_windows_days_list=[1, 5, 10],
+        all_possible_combinations=all_possible_combinations,
+        comovement_detection_type=ComovementType.COINT_MI,
+        combination_limit=1000,
+        trade_limit=1000,
+        risk_free_rate=0,
+        fees=0.1 / 100,
+        min_val_net_return=min_val_net_return,
+        min_val_num_trades=min_val_num_trades,
+        num_good_combs_to_choose=num_good_combs_to_choose,
+        use_top_model=TopModelType.HMM,
+        target_type=TargetType.OLS_CLF,
+        target_params=target_params,
+        close_on_no_signal=False,
+        spread_window=spread_window,
+        use_parallelization=False,      # Debugging: single process
+        use_gpu=False                   # <-- Make sure you add this!
+    )
+    backtester.Run()
+
+# Run the backtest for just this pair
+backtest_test(
+    prices_df,
+    num_good_combs_to_choose=1,
+    min_val_net_return=0.1,
+    min_val_num_trades=10
+)
+
+# %%
+pairs = [
+    ('close_algo-usdt', 'close_sand-usdt'),
+    ('close_audio-usdt', 'close_lrc-usdt'),
+    ('close_avax-usdt', 'close_utk-usdt'),
+    ('close_axs-usdt', 'close_enj-usdt'),
+    ('close_bch-usdt', 'close_nuls-usdt'),
+    ('close_btc-usdt', 'close_uni-usdt'),
+    ('close_coti-usdt', 'close_grt-usdt'),
+    ('close_dent-usdt', 'close_hot-usdt'),
+    ('close_hive-usdt', 'close_icx-usdt'),
+    ('close_iota-usdt', 'close_ksm-usdt'),
+    ('close_mbl-usdt', 'close_sc-usdt'),
+    ('close_trx-usdt', 'close_xlm-usdt'),
+    ('close_vtho-usdt', 'close_zrx-usdt'),
+    ('close_vtho-usdt', 'close_win-usdt')
+]
+
+def backtest_selected_pairs(prices_df: pd.DataFrame, pairs, num_good_combs_to_choose: int, min_val_net_return: float, min_val_num_trades: int, use_top_model=None):
+    backtester = Backtester(
+        prices_df=prices_df,
+        train_window_days=660,
+        ml_val_window_days=60,
+        trade_window_days=60,
+        val_window_days=60,
+        features_rolling_windows_days_list=[1, 5, 10],
+        all_possible_combinations=pairs,   # <--- Only these pairs!
+        comovement_detection_type=ComovementType.COINT_MI,
+        combination_limit=1000,
+        trade_limit=1000,
+        risk_free_rate=0,
+        fees=0.1 / 100,
+        min_val_net_return=min_val_net_return,
+        min_val_num_trades=min_val_num_trades,
+        num_good_combs_to_choose=len(pairs),  # or set as needed
+        use_top_model=use_top_model,
+        target_type=TargetType.OLS_CLF,
+        target_params={'look_ahead_days': 20, 'reg_points_thresh_frac': 0.75, 'exceedance_thresh_frac': 0.001},
+        close_on_no_signal=False,
+        spread_window=5,
+        use_parallelization=False,
+        use_gpu=False
+    )
+    backtester.Run()
+
+# %%
+backtest_selected_pairs(
+    prices_df,
+    pairs=pairs,
+    num_good_combs_to_choose=len(pairs),
+    min_val_net_return=0.1,
+    min_val_num_trades=10,
+    use_top_model=TopModelType.HMM   # or TopModelType.HMM if you want HMM
+)
+
 # %%

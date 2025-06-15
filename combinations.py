@@ -1,3 +1,4 @@
+#%%
 import logging
 from itertools import combinations
 
@@ -9,31 +10,20 @@ from joblib.externals.loky import get_reusable_executor
 
 from comovement import ComovementType, TestCombinationComovement
 
-
+#%%
 def CreateAllPossibleCombinations(prices_df: pd.DataFrame):
 	logging.info(f'Start creating combinations for {len(prices_df.columns)} pairs: {list(prices_df.columns)}')
 
 	pair_combinations = []
 	combs_set = set()
 	close_columns = [col for col in prices_df.columns if 'close' in col]
-
-	# TOP 20 ticker by liquidity (by nominal price not total volume)
-	# Limit the search space for testing purpose
-	# close_columns = ['close_btc-pax', 'close_btc-usdt', 'close_yfi-usdt',
-	# 				'close_paxg-usdt', 'close_yfii-usdt', 'close_eth-usdt',
-	# 				'close_mkr-usdt', 'close_bch-usdt', 'close_xmr-usdt',
-	# 				'close_comp-usdt', 'close_ltc-usdt', 'close_dash-usdt',
-	# 				'close_aave-usdt', 'close_ksm-usdt', 'close_btcup-usdt',
-	# 				'close_zec-usdt', 'close_ethup-usdt', 'close_fil-usdt',
-	# 				'close_egld-usdt', 'close_nmr-usdt']	
-
 	for c0, c1 in combinations(close_columns, r=2):
 		if (c0, c1) in combs_set: continue
 
 		combs_set.add((c0, c1))
 		combs_set.add((c1, c0))
 		pair_combinations.append((c0, c1))
-		# pair_combinations.append((c1, c0))
+		pair_combinations.append((c1, c0))
 
 	logging.info(f'Created total number of combinations: {len(pair_combinations)}')
 	return pair_combinations
@@ -43,7 +33,7 @@ def SearchForGoodCombinations(prices_df: pd.DataFrame, all_possible_combinations
 							  num_good_combs_to_choose: int) \
 		-> list[tuple[tuple[str, str], PhillipsOuliarisTestResults]]:
 	logging.info(f'Start searching for good combinations from total of {len(all_possible_combinations)} possible combinations '
-				 f'from {prices_df.index[0]} to {prices_df.index[-1]} and for pairs: {[col for col in prices_df.columns if "close" in col]}')
+				 f'from {prices_df.index[0]} to {prices_df.index[-1]} and for pairs: {list(prices_df.columns)}')
 
 	params = [(prices_df[list(combination)], combination, comovement_type) for combination in all_possible_combinations]
 	results = (Parallel(n_jobs=n_jobs, prefer="processes")
@@ -69,6 +59,7 @@ def SearchForGoodCombinations(prices_df: pd.DataFrame, all_possible_combinations
 	# 	# used_pairs.add(comb[1])
 
 	logging.info(f'Finally got {len(good_combinations)} good combinations for prices slice from {prices_df.index[0]} to {prices_df.index[-1]}')
-	# logging.info(good_combinations)
 
 	return good_combinations
+
+# %%
